@@ -3,20 +3,42 @@ apply plugin: 'kotlin-android'
 
 android {
     namespace "com.example.aidetest"
+
+    buildFeatures {
+        buildConfig true
+    }
     compileSdkVersion 36
 
     defaultConfig {
         applicationId "com.example.aidetest"
         minSdkVersion 23
         targetSdkVersion 36
-        versionCode 46
-        versionName "2.30.0"
+        versionCode (project.findProperty("versionCode") ?: "46").toString().toInteger()
+        versionName (project.findProperty("versionName") ?: "2.30.0").toString()
+
+        def repo = (project.findProperty("githubRepository") ?: "OWNER/REPO").toString().replace("\\", "\\\\").replace("\"", "\\\"")
+        buildConfigField "String", "GITHUB_REPOSITORY", "\"${repo}\""
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        release {
+            def storePath = System.getenv("ANDROID_KEYSTORE_PATH")
+            if (storePath) {
+                storeFile file(storePath)
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled true
+            if (System.getenv("ANDROID_KEYSTORE_PATH")) {
+                signingConfig signingConfigs.release
+            }
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }

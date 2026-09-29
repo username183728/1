@@ -92,14 +92,15 @@ class MainActivity : Activity() {
     private lateinit var homeProfile: ImageButton
     private lateinit var search: EditText
     // Search bar "Snap / Enter Always": a small scroll gesture is enough to hide/show it.
-    private var searchSnapHidden = false
-    private var searchSnapLastY = 0
-    private var searchSnapAccumulator = 0
-    private var searchSnapAnimating = false
-    private var searchSnapToken = 0
+    private var searchSnapEnabled = false          // halaman aktif memang punya search bar
+    private var searchSnapHidden = false           // sedang disembunyikan oleh snap
+    private var searchSnapFraction = 1f            // 1 = tampil penuh, 0 = tertutup
+    private var searchSnapAnimator: android.animation.ValueAnimator? = null
     private var searchSnapTouchY = 0f
     private var searchSnapTracking = false
     private var searchSnapGesture = 0f
+    private var searchSnapLastScrollY = 0
+    private var searchSnapScrollAccum = 0
     private lateinit var bottomNav: LinearLayout
     private lateinit var navFavorite: View
     private lateinit var loginScreen: LinearLayout
@@ -303,6 +304,7 @@ class MainActivity : Activity() {
         sanitizeSensitiveHistory()
         applySystemTheme()
         enableImmersiveFullscreen()
+        window.decorView.postDelayed({ AppUpdateManager(this).checkForUpdate() }, 900L)
 
         content = findViewById(R.id.content)
         scroll = findViewById(R.id.scroll)
@@ -388,8 +390,8 @@ class MainActivity : Activity() {
             homeMenu.alpha = 1f - (progress * 0.10f)
             homeProfile.alpha = 1f - (progress * 0.10f)
 
-            // Snap / Enter Always: kembali ke paling atas selalu memunculkan search bar.
-            if (scrollY <= 0) setSearchSnap(hide = false)
+            // Snap / Enter Always: geser sedikit saja sudah cukup (tidak perlu sampai ujung atas).
+            handleSearchSnapScroll(scrollY)
         }
         findViewById<View>(R.id.navHome).setOnClickListener { navigateRoot { showHome() } }
         findViewById<View>(R.id.navTools).setOnClickListener { navigateRoot { showAllTools() } }
@@ -1064,7 +1066,7 @@ class MainActivity : Activity() {
                     children = mutableListOf(),
                     scrollY = scroll.scrollY,
                     searchText = search.text?.toString() ?: "",
-                    searchVisible = search.visibility,
+                    searchVisible = if (searchSnapEnabled) View.VISIBLE else View.GONE,
                     lightweight = true
                 )
             )
@@ -1083,7 +1085,7 @@ class MainActivity : Activity() {
                 children = children,
                 scrollY = scroll.scrollY,
                 searchText = search.text?.toString() ?: "",
-                searchVisible = search.visibility
+                searchVisible = if (searchSnapEnabled) View.VISIBLE else View.GONE
             )
         )
         while (pageBackStack.size > 8) pageBackStack.removeFirst()
@@ -1127,7 +1129,7 @@ class MainActivity : Activity() {
             homeProfile.visibility = if (snapshot.name == "home") View.VISIBLE else View.GONE
             action.visibility = if (snapshot.name == "home") View.GONE else View.VISIBLE
             back.visibility = if (snapshot.name == "home") View.GONE else View.VISIBLE
-            search.visibility = snapshot.searchVisible
+            resetSearchSnap(snapshot.searchVisible == View.VISIBLE)
             suppressSearch = true
             search.setText(snapshot.searchText)
             suppressSearch = false
@@ -1202,77 +1204,128 @@ class MainActivity : Activity() {
     }
 
     /**
-     * Restores the search bar to its normal state whenever a new root page is opened.
-     * This prevents a previously hidden bar from remaining hidden after navigation.
+     * Mengembalikan search bar ke keadaan normal setiap kali halaman baru dibuka.
+     * [show] = apakah halaman ini memang memakai search bar.
      */
     private fun resetSearchSnap(show: Boolean) {
-        searchSnapAccumulator = 0
-        searchSnapLastY = scroll.scrollY
-        searchSnapAnimating = false
-        searchSnapToken++
+        searchSnapAnimator?.cancel()
+        searchSnapAnimator = null
+        searchSnapEnabled = show
+        searchSnapHidden = false
+        searchSnapScrollAccum = 0
+        searchSnapLastScrollY = scroll.scrollY
         searchSnapGesture = 0f
         search.animate().cancel()
         search.translationY = 0f
-        search.alpha = 1f
+        applySearchSnapFraction(1f)
         search.visibility = if (show) View.VISIBLE else View.GONE
-        searchSnapHidden = !show
     }
 
     private fun hideSearchSnap() = setSearchSnap(hide = true)
     private fun showSearchSnap() = setSearchSnap(hide = false)
 
+    /** Tinggi search bar (48dp) + margin bawah (8dp) sesuai activity_main.xml. */
+    private fun searchSnapFullSpace(): Int = dp(48) + dp(8)
+
+    /** Mengatur ukuran search bar: 1f = tampil penuh, 0f = tertutup (tinggi 0). */
+    private fun applySearchSnapFraction(f: Float) {
+        searchSnapFraction = f
+        val lp = search.layoutParams as? LinearLayout.LayoutParams ?: return
+        lp.height = (dp(48) * f).toInt()
+        lp.bottomMargin = (dp(8) * f).toInt()
+        search.alpha = f
+        search.layoutParams = lp
+    }
+
+    private fun animateSearchSnapTo(target: Float) {
+        searchSnapAnimator?.cancel()
+        if (target > 0f && search.visibility != View.VISIBLE) search.visibility = View.VISIBLE
+        val anim = android.animation.ValueAnimator.ofFloat(searchSnapFraction, target)
+        anim.duration = if (target > 0f) 200L else 160L
+        anim.interpolator = android.view.animation.DecelerateInterpolator()
+        anim.addUpdateListener { applySearchSnapFraction(it.animatedValue as Float) }
+        anim.addListener(object : android.animation.AnimatorListenerAdapter() {
+            private var cancelled = false
+            override fun onAnimationCancel(animation: android.animation.Animator) { cancelled = true }
+            override fun onAnimationEnd(animation: android.animation.Animator) {
+                if (!cancelled) {
+                    applySearchSnapFraction(target)
+                    if (target == 0f) search.visibility = View.GONE
+                }
+                // Perubahan tinggi viewport bukan gesekan pengguna: reset penghitung scroll.
+                searchSnapLastScrollY = scroll.scrollY
+                searchSnapScrollAccum = 0
+            }
+        })
+        searchSnapAnimator = anim
+        anim.start()
+    }
+
     /**
-     * Snap / Enter Always. Bisa dibalik kapan saja (di tengah animasi pun), sehingga
-     * satu gerakan kecil selalu direspons. Search bar meluncur turun saat muncul dan
-     * meluncur naik saat disembunyikan.
+     * Snap / Enter Always. Bisa dibalik kapan saja (bahkan di tengah animasi), sehingga
+     * satu gerakan kecil selalu direspons. Search bar mengecil naik saat disembunyikan
+     * dan meluncur turun saat muncul kembali.
      */
     private fun setSearchSnap(hide: Boolean) {
-        if (currentPage != "home" && currentPage != "all") return
-        if (hide == searchSnapHidden) return
-        // Jangan sembunyikan saat pengguna sedang mengetik / ada query aktif.
-        if (hide && (search.hasFocus() || search.text.isNotEmpty())) return
-        searchSnapHidden = hide
-        val token = ++searchSnapToken
-        search.animate().cancel()
+        if (!searchSnapEnabled) return
         if (hide) {
-            search.animate()
-                .translationY(-dp(72).toFloat())
-                .alpha(0f)
-                .setDuration(150L)
-                .setInterpolator(android.view.animation.DecelerateInterpolator())
-                .withEndAction {
-                    if (token == searchSnapToken) {
-                        search.visibility = View.GONE
-                        search.translationY = 0f
-                        search.alpha = 1f
-                    }
-                }
-                .start()
-        } else {
-            if (search.visibility != View.VISIBLE) {
-                // Masuk dari atas lalu meluncur turun ke posisi normal.
-                search.translationY = -dp(72).toFloat()
-                search.alpha = 0f
-                search.visibility = View.VISIBLE
+            // Jangan sembunyikan saat ada query aktif (hasil pencarian sedang dilihat).
+            if (search.text.isNotEmpty()) return
+            // Sembunyikan hanya jika konten masih bisa digulir setelah bar hilang,
+            // supaya tidak terjadi kedip muncul-hilang berulang.
+            val child = scroll.getChildAt(0) ?: return
+            if (child.height - scroll.height < searchSnapFullSpace()) return
+        }
+        if (hide == searchSnapHidden) return
+        searchSnapHidden = hide
+        if (hide) {
+            // Fokus/keyboard tidak boleh menahan search bar tetap tampil.
+            if (search.hasFocus()) {
+                search.clearFocus()
+                val imm = getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+                imm?.hideSoftInputFromWindow(search.windowToken, 0)
             }
-            search.animate()
-                .translationY(0f)
-                .alpha(1f)
-                .setDuration(180L)
-                .setInterpolator(android.view.animation.DecelerateInterpolator())
-                .start()
+        }
+        animateSearchSnapTo(if (hide) 0f else 1f)
+    }
+
+    /**
+     * Cadangan berbasis posisi scroll: menangkap fling / scroll non-sentuh.
+     * Ambang sangat kecil (4dp) agar satu geseran kecil sudah cukup.
+     */
+    private fun handleSearchSnapScroll(scrollY: Int) {
+        val last = searchSnapLastScrollY
+        searchSnapLastScrollY = scrollY
+        if (!searchSnapEnabled || restoringSnapshot) return
+        // Saat animasi berjalan, viewport berubah ukuran; itu bukan gerakan pengguna.
+        if (searchSnapAnimator?.isRunning == true) return
+        if (scrollY <= 0) {
+            searchSnapScrollAccum = 0
+            showSearchSnap()
+            return
+        }
+        val d = scrollY - last
+        if (d == 0) return
+        if ((d > 0) != (searchSnapScrollAccum > 0)) searchSnapScrollAccum = 0
+        searchSnapScrollAccum += d
+        val trigger = dp(4)
+        if (searchSnapScrollAccum >= trigger) {
+            searchSnapScrollAccum = 0
+            hideSearchSnap()
+        } else if (searchSnapScrollAccum <= -trigger) {
+            searchSnapScrollAccum = 0
+            showSearchSnap()
         }
     }
 
     /**
-     * Membaca gerakan jari langsung dari semua sentuhan di area konten, bukan dari
-     * perubahan scrollY. Jadi tetap bekerja walau sudah di paling atas, dan tidak
-     * terpengaruh pergeseran layout saat search bar muncul/hilang.
-     * - Jari turun sedikit (konten bergerak ke atas/arah awal halaman) -> search muncul.
-     * - Jari naik sedikit (konten bergerak ke bawah) -> search tersembunyi.
+     * Membaca gerakan jari langsung dari semua sentuhan di area konten.
+     * - Jari naik sedikit (konten bergulir ke bawah) -> search tersembunyi.
+     * - Jari turun sedikit (konten bergulir ke atas) -> search muncul lagi,
+     *   di posisi scroll mana pun (Enter Always).
      */
     private fun handleSearchSnapTouch(ev: MotionEvent) {
-        if (currentPage != "home" && currentPage != "all") return
+        if (!searchSnapEnabled) return
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val loc = IntArray(2)
@@ -1285,17 +1338,16 @@ class MainActivity : Activity() {
                 if (!searchSnapTracking) return
                 val dy = ev.rawY - searchSnapTouchY
                 searchSnapTouchY = ev.rawY
-                // Ganti arah = mulai hitung ulang, supaya satu sentuhan kecil cukup.
+                // Ganti arah = hitung ulang, supaya satu sentuhan kecil cukup.
                 if (dy != 0f && (dy > 0f) != (searchSnapGesture > 0f)) searchSnapGesture = 0f
                 searchSnapGesture += dy
-                val trigger = dp(6).toFloat()
+                val trigger = dp(4).toFloat()
                 if (searchSnapGesture >= trigger) {
                     searchSnapGesture = 0f
                     showSearchSnap()
                 } else if (searchSnapGesture <= -trigger) {
                     searchSnapGesture = 0f
-                    // Hanya sembunyikan jika daftar memang bisa digulir ke bawah.
-                    if (scroll.scrollY > 0 || scroll.canScrollVertically(1)) hideSearchSnap()
+                    hideSearchSnap()
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -2877,8 +2929,8 @@ class MainActivity : Activity() {
     }
 
     private fun showAbout() {
-        AlertDialog.Builder(this).setTitle("GITLS 2.30.0").setMessage(
-            "Native Android utility suite.\n\nVersi 2.30 mendesain ulang GitHub Publisher (pengaturan, proses upload animasi, dan halaman hasil) serta melengkapi ikon semua tools. Versi 2.28 menambahkan GitHub ZIP Publisher, perbaikan keyboard-safe navigation, dan Snap Search yang lebih responsif. Fitur V2.25 dan V2.26 tetap dipertahankan. Versi 2.23.0 menyatukan Editor dan Web Code Editor menjadi satu workspace kode HTML, CSS, dan JavaScript, memindahkan format JSON/CSV/Base64/XML dan lainnya ke menu (+), serta merapikan mode editor layar penuh agar fokus pada kode."
+        AlertDialog.Builder(this).setTitle("GITLS ${BuildConfig.VERSION_NAME}").setMessage(
+            "Native Android utility suite.\n\nVersi 2.31 memperbaiki Snap Search (search bar mengecil dan muncul kembali dengan geseran kecil di semua halaman yang punya pencarian). Versi 2.30 mendesain ulang GitHub Publisher (pengaturan, proses upload animasi, dan halaman hasil) serta melengkapi ikon semua tools. Versi 2.28 menambahkan GitHub ZIP Publisher, perbaikan keyboard-safe navigation, dan Snap Search yang lebih responsif. Fitur V2.25 dan V2.26 tetap dipertahankan. Versi 2.23.0 menyatukan Editor dan Web Code Editor menjadi satu workspace kode HTML, CSS, dan JavaScript, memindahkan format JSON/CSV/Base64/XML dan lainnya ke menu (+), serta merapikan mode editor layar penuh agar fokus pada kode."
         ).setPositiveButton("OK", null).show()
     }
 
