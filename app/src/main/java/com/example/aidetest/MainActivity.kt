@@ -96,6 +96,10 @@ class MainActivity : Activity() {
     private var searchSnapLastY = 0
     private var searchSnapAccumulator = 0
     private var searchSnapAnimating = false
+    private var searchSnapToken = 0
+    private var searchSnapTouchY = 0f
+    private var searchSnapTracking = false
+    private var searchSnapGesture = 0f
     private lateinit var bottomNav: LinearLayout
     private lateinit var navFavorite: View
     private lateinit var loginScreen: LinearLayout
@@ -384,25 +388,8 @@ class MainActivity : Activity() {
             homeMenu.alpha = 1f - (progress * 0.10f)
             homeProfile.alpha = 1f - (progress * 0.10f)
 
-            if (currentPage == "home" || currentPage == "all") {
-                val delta = scrollY - searchSnapLastY
-                searchSnapLastY = scrollY
-                if (delta != 0) {
-                    // Accumulate tiny native scroll events so one short swipe is enough,
-                    // without making the bar flicker from one-pixel jitter.
-                    searchSnapAccumulator += delta
-                    // Very small gesture is enough: the bar behaves like a snap/enter-always
-                    // control instead of requiring the user to reach the top of the page.
-                    val threshold = dp(3)
-                    if (searchSnapAccumulator >= threshold) {
-                        searchSnapAccumulator = 0
-                        hideSearchSnap()
-                    } else if (searchSnapAccumulator <= -threshold) {
-                        searchSnapAccumulator = 0
-                        showSearchSnap()
-                    }
-                }
-            }
+            // Snap / Enter Always: kembali ke paling atas selalu memunculkan search bar.
+            if (scrollY <= 0) setSearchSnap(hide = false)
         }
         findViewById<View>(R.id.navHome).setOnClickListener { navigateRoot { showHome() } }
         findViewById<View>(R.id.navTools).setOnClickListener { navigateRoot { showAllTools() } }
@@ -424,6 +411,7 @@ class MainActivity : Activity() {
         runCatching { MyToolsWidget.update(this) }
         if (intent?.getBooleanExtra("open_finance", false) == true) { enterApp(); financeReaderTool() }
         else if (intent?.getBooleanExtra("open_iot", false) == true) { enterApp(); openTool("espstudio") }
+        else if (intent?.getBooleanExtra("open_github_upload", false) == true) { enterApp(); openTool("githubzip") }
         else if (intent?.getBooleanExtra("quick_expense", false) == true) { enterApp(); financeReaderTool(); showAddTxDialog(FinanceDb(this), false) }
         else if (intent?.getBooleanExtra("quick_income", false) == true) { enterApp(); financeReaderTool(); showAddTxDialog(FinanceDb(this), true) }
     }
@@ -434,6 +422,8 @@ class MainActivity : Activity() {
             enterApp(); financeReaderTool()
         } else if (intent?.getBooleanExtra("open_iot", false) == true) {
             enterApp(); openTool("iotdashboard")
+        } else if (intent?.getBooleanExtra("open_github_upload", false) == true) {
+            enterApp(); openTool("githubzip")
         }
     }
 
@@ -1179,9 +1169,13 @@ class MainActivity : Activity() {
         when (name) {
             "IoT Dynamic Topology" -> {
                 action.text = "+"; action.textSize = 28f; action.setOnClickListener { showStudioWidgetPicker() }
+                editorMore.visibility = View.VISIBLE; editorMore.text = "⋮"; editorMore.textSize = 25f
+                editorMore.setOnClickListener { showToolMenu(editorMore) }
             }
             "Pengelola Keuangan" -> {
                 action.text = "+"; action.textSize = 28f; action.setOnClickListener { showFinanceActions() }
+                editorMore.visibility = View.VISIBLE; editorMore.text = "⋮"; editorMore.textSize = 25f
+                editorMore.setOnClickListener { showToolMenu(editorMore) }
             }
             in rmAllPages -> {
                 editorMore.visibility = View.GONE
@@ -1201,7 +1195,7 @@ class MainActivity : Activity() {
                     editorMore.visibility = View.GONE
                     action.text = "⋮"
                     action.textSize = 25f
-                    action.setOnClickListener { showAbout() }
+                    action.setOnClickListener { showToolMenu(action) }
                 }
             }
         }
@@ -1215,6 +1209,8 @@ class MainActivity : Activity() {
         searchSnapAccumulator = 0
         searchSnapLastY = scroll.scrollY
         searchSnapAnimating = false
+        searchSnapToken++
+        searchSnapGesture = 0f
         search.animate().cancel()
         search.translationY = 0f
         search.alpha = 1f
@@ -1222,43 +1218,96 @@ class MainActivity : Activity() {
         searchSnapHidden = !show
     }
 
-    private fun hideSearchSnap() {
-        if (searchSnapHidden || searchSnapAnimating || search.visibility != View.VISIBLE) return
-        searchSnapAnimating = true
+    private fun hideSearchSnap() = setSearchSnap(hide = true)
+    private fun showSearchSnap() = setSearchSnap(hide = false)
+
+    /**
+     * Snap / Enter Always. Bisa dibalik kapan saja (di tengah animasi pun), sehingga
+     * satu gerakan kecil selalu direspons. Search bar meluncur turun saat muncul dan
+     * meluncur naik saat disembunyikan.
+     */
+    private fun setSearchSnap(hide: Boolean) {
+        if (currentPage != "home" && currentPage != "all") return
+        if (hide == searchSnapHidden) return
+        // Jangan sembunyikan saat pengguna sedang mengetik / ada query aktif.
+        if (hide && (search.hasFocus() || search.text.isNotEmpty())) return
+        searchSnapHidden = hide
+        val token = ++searchSnapToken
         search.animate().cancel()
-        search.animate()
-            .translationY(-dp(72).toFloat())
-            .alpha(0f)
-            .setDuration(150L)
-            .setInterpolator(android.view.animation.DecelerateInterpolator())
-            .withEndAction {
-                search.visibility = View.GONE
-                search.translationY = 0f
-                search.alpha = 1f
-                searchSnapHidden = true
-                searchSnapAnimating = false
+        if (hide) {
+            search.animate()
+                .translationY(-dp(72).toFloat())
+                .alpha(0f)
+                .setDuration(150L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .withEndAction {
+                    if (token == searchSnapToken) {
+                        search.visibility = View.GONE
+                        search.translationY = 0f
+                        search.alpha = 1f
+                    }
+                }
+                .start()
+        } else {
+            if (search.visibility != View.VISIBLE) {
+                // Masuk dari atas lalu meluncur turun ke posisi normal.
+                search.translationY = -dp(72).toFloat()
+                search.alpha = 0f
+                search.visibility = View.VISIBLE
             }
-            .start()
+            search.animate()
+                .translationY(0f)
+                .alpha(1f)
+                .setDuration(180L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
+        }
     }
 
-    private fun showSearchSnap() {
-        if (!searchSnapHidden || searchSnapAnimating || (currentPage != "home" && currentPage != "all")) return
-        searchSnapAnimating = true
-        search.animate().cancel()
-        search.visibility = View.VISIBLE
-        // Re-enter from above and slide down into its normal position.
-        search.translationY = -dp(72).toFloat()
-        search.alpha = 0f
-        search.animate()
-            .translationY(0f)
-            .alpha(1f)
-            .setDuration(180L)
-            .setInterpolator(android.view.animation.DecelerateInterpolator())
-            .withEndAction {
-                searchSnapHidden = false
-                searchSnapAnimating = false
+    /**
+     * Membaca gerakan jari langsung dari semua sentuhan di area konten, bukan dari
+     * perubahan scrollY. Jadi tetap bekerja walau sudah di paling atas, dan tidak
+     * terpengaruh pergeseran layout saat search bar muncul/hilang.
+     * - Jari turun sedikit (konten bergerak ke atas/arah awal halaman) -> search muncul.
+     * - Jari naik sedikit (konten bergerak ke bawah) -> search tersembunyi.
+     */
+    private fun handleSearchSnapTouch(ev: MotionEvent) {
+        if (currentPage != "home" && currentPage != "all") return
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val loc = IntArray(2)
+                scroll.getLocationOnScreen(loc)
+                searchSnapTracking = ev.rawY >= loc[1] && ev.rawY <= loc[1] + scroll.height
+                searchSnapTouchY = ev.rawY
+                searchSnapGesture = 0f
             }
-            .start()
+            MotionEvent.ACTION_MOVE -> {
+                if (!searchSnapTracking) return
+                val dy = ev.rawY - searchSnapTouchY
+                searchSnapTouchY = ev.rawY
+                // Ganti arah = mulai hitung ulang, supaya satu sentuhan kecil cukup.
+                if (dy != 0f && (dy > 0f) != (searchSnapGesture > 0f)) searchSnapGesture = 0f
+                searchSnapGesture += dy
+                val trigger = dp(6).toFloat()
+                if (searchSnapGesture >= trigger) {
+                    searchSnapGesture = 0f
+                    showSearchSnap()
+                } else if (searchSnapGesture <= -trigger) {
+                    searchSnapGesture = 0f
+                    // Hanya sembunyikan jika daftar memang bisa digulir ke bawah.
+                    if (scroll.scrollY > 0 || scroll.canScrollVertically(1)) hideSearchSnap()
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                searchSnapTracking = false
+                searchSnapGesture = 0f
+            }
+        }
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        runCatching { handleSearchSnapTouch(ev) }
+        return super.dispatchTouchEvent(ev)
     }
 
     private fun clearPage(name: String, showSearch: Boolean = false) {
@@ -1303,8 +1352,8 @@ class MainActivity : Activity() {
         back.visibility = if (isHome) View.GONE else View.VISIBLE
         configureActionForPage(name)
         if (!isRoot && name != "Editor" && name !in rmAllPages) {
-            content.addView(toolAccentStrip(name), LinearLayout.LayoutParams(-1, dp(46)).apply { bottomMargin = dp(8) })
-            content.addView(toolControlBar(name), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+            // Kotak UTILITY/READY, status "Siap digunakan", dan header tool dihapus.
+            // Riwayat & Info sekarang ada di menu titik tiga kanan atas.
         }
         resetSearchSnap(showSearch)
         // Bottom navigation is only for the four root sections. Every tool page,
@@ -2527,14 +2576,13 @@ class MainActivity : Activity() {
     }
 
     private fun addToolHeader(titleText: String, description: String, icon: String = "•") {
-        content.addView(toolHeader(titleText, description, icon), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+        // Kotak header tool sengaja tidak ditampilkan lagi (UI bersih).
     }
 
     // V4: workspace helpers for complex tools. These keep domain logic untouched while
     // giving network/file/security/system tools a consistent mobile workspace hierarchy.
     private fun toolWorkspace(titleText: String, description: String, icon: String = "tools") {
-        addToolHeader(titleText, description, icon)
-        content.addView(toolControlBar(titleText), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(9) })
+        // Header & control bar dihapus; Riwayat/Info ada di menu titik tiga.
     }
 
     private fun toolWorkspaceSection(titleText: String, subtitle: String = "") {
@@ -2592,6 +2640,28 @@ class MainActivity : Activity() {
                 .show()
         }, LinearLayout.LayoutParams(dp(54), dp(36)))
         return box
+    }
+
+    // Menu titik tiga kanan atas untuk semua tool: Riwayat, Info, dan Tentang.
+    private fun showToolMenu(anchor: View) {
+        val name = currentPage
+        val pm = PopupMenu(this, anchor)
+        pm.menu.add(0, 1, 0, "Riwayat")
+        pm.menu.add(0, 2, 1, "Info")
+        pm.menu.add(0, 3, 2, "Tentang GITLS")
+        pm.setOnMenuItemClickListener {
+            when (it.itemId) {
+                1 -> historyTool()
+                2 -> AlertDialog.Builder(this)
+                    .setTitle(name)
+                    .setMessage(toolDescription(name))
+                    .setPositiveButton("OK", null)
+                    .show()
+                3 -> showAbout()
+            }
+            true
+        }
+        pm.show()
     }
 
     private fun toolDescription(name: String): String = when {
@@ -4917,8 +4987,6 @@ class MainActivity : Activity() {
         val folders = files.count { it.isDirectory }
         val regular = files.size - folders
 
-        content.addView(toolHeader("File Manager", dir.name, "folder-multiple-outline"), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(9) })
-
         val path = TextView(this).apply {
             text = "⌂  ${dir.absolutePath}"
             textSize = 11f
@@ -7040,6 +7108,16 @@ class MainActivity : Activity() {
     private var ghRepoValue = ""
     private var ghTokenValue = ""
     private var ghCommitValue = ""
+    @Volatile private var ghCancelled = false
+    private var ghPendingResult: GhResult? = null
+    private var ghPendingError: Throwable? = null
+    private var ghFinishedSec = -1
+    private var ghPct = 0
+    private var ghAppForeground = true
+    private val ghStepLast = arrayOfNulls<GhProgress>(5)
+    private var ghCancelBtn: LinearLayout? = null
+    private var ghCancelLabel: TextView? = null
+    private class GhCancelException : RuntimeException("Upload dibatalkan")
     private var ghRing: ProgressRingView? = null
     private var ghPercentText: TextView? = null
     private var ghElapsedText: TextView? = null
@@ -7285,8 +7363,29 @@ class MainActivity : Activity() {
         ghCommitValue = prefs.getString("gh_commit", null) ?: "Upload project via GITLS"
         ghStage = FrameLayout(this)
         content.addView(ghStage, LinearLayout.LayoutParams(-1, -2))
-        ghShow(ghSettingsScreen(), "Pengaturan GitHub")
+        val pendingResult = ghPendingResult
+        val pendingError = ghPendingError
+        when {
+            ghRunning -> {
+                // Upload masih berjalan: kembali ke layar proses, bukan halaman pengaturan.
+                ghShow(ghProgressScreen("", ghUserValue, ghRepoValue, ghBranch), "Proses Upload")
+                ghReplayProgress()
+                ghHandler.removeCallbacks(ghTicker)
+                ghHandler.post(ghTicker)
+            }
+            pendingResult != null -> { ghPendingResult = null; ghShowResult(pendingResult) }
+            pendingError != null -> {
+                ghPendingError = null
+                ghShow(ghProgressScreen("", ghUserValue, ghRepoValue, ghBranch), "Proses Upload")
+                ghReplayProgress()
+                ghShowFailure(pendingError)
+            }
+            else -> ghShow(ghSettingsScreen(), "Pengaturan GitHub")
+        }
     }
+
+    override fun onStart() { super.onStart(); ghAppForeground = true }
+    override fun onStop() { ghAppForeground = false; super.onStop() }
 
     private fun ghSettingsScreen(): LinearLayout {
         val screen = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(2), dp(4), dp(2), dp(24)) }
@@ -7562,11 +7661,11 @@ class MainActivity : Activity() {
         }
         ghRing = ring
         ringBox.addView(ring, FrameLayout.LayoutParams(-1, -1))
-        val center = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
-        center.addView(ghLogo(54, ghInk), LinearLayout.LayoutParams(dp(54), dp(54)).apply { bottomMargin = dp(8) })
-        ghPercentText = ghText("0%", 28f, ghInk, true)
-        center.addView(ghPercentText)
-        ringBox.addView(center, FrameLayout.LayoutParams(-1, -1))
+        val center = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+        center.addView(ghLogo(54, ghInk), LinearLayout.LayoutParams(dp(54), dp(54)).apply { bottomMargin = dp(8); gravity = Gravity.CENTER_HORIZONTAL })
+        ghPercentText = ghText("$ghPct%", 28f, ghInk, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }
+        center.addView(ghPercentText, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
+        ringBox.addView(center, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
         screen.addView(ringBox, LinearLayout.LayoutParams(dp(210), dp(210)).apply { topMargin = dp(6); bottomMargin = dp(14) })
 
         val target = LinearLayout(this).apply {
@@ -7621,12 +7720,84 @@ class MainActivity : Activity() {
 
         ghErrorHost = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         screen.addView(ghErrorHost, LinearLayout.LayoutParams(-1, -2))
+
+        val cancel = ghOutlineButton("Batal", "close-circle") { ghConfirmCancel() }
+        (cancel.layoutParams as LinearLayout.LayoutParams).topMargin = dp(16)
+        ghCancelBtn = cancel
+        ghCancelLabel = cancel.getChildAt(1) as? TextView
+        screen.addView(cancel)
         return screen
+    }
+
+    private fun ghConfirmCancel() {
+        if (!ghRunning || ghCancelled) return
+        AlertDialog.Builder(this)
+            .setTitle("Batalkan upload?")
+            .setMessage("Proses upload ke GitHub akan dihentikan. File yang belum ter-push tidak akan masuk ke repository.")
+            .setNegativeButton("Lanjutkan", null)
+            .setPositiveButton("Batalkan") { _, _ ->
+                if (!ghRunning) return@setPositiveButton
+                ghCancelled = true
+                ghCancelLabel?.text = "Membatalkan…"
+                ghCancelBtn?.alpha = 0.5f
+                ghCancelBtn?.isEnabled = false
+                ghCancelBtn?.isClickable = false
+            }
+            .show()
+    }
+
+    /** Menggambar ulang layar proses dari status terakhir (dipakai saat masuk kembali ke halaman). */
+    private fun ghReplayProgress() {
+        ghCurrentStep = 0
+        for (i in 0..4) ghStepLast[i]?.let { ghOnProgress(it, store = false) }
+        if (ghCancelled) {
+            ghCancelLabel?.text = "Membatalkan…"
+            ghCancelBtn?.alpha = 0.5f
+            ghCancelBtn?.isEnabled = false
+            ghCancelBtn?.isClickable = false
+        }
+    }
+
+    private fun ghNotifyDone(success: Boolean, text: String) {
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channelId = "github_upload"
+            if (Build.VERSION.SDK_INT >= 26) {
+                manager.createNotificationChannel(NotificationChannel(channelId, "Upload GitHub", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = "Status selesai atau gagal proses upload ke GitHub"
+                })
+            }
+            val openIntent = Intent(this, MainActivity::class.java).apply {
+                putExtra("open_github_upload", true)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+            val open = PendingIntent.getActivity(
+                this, 99002, openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0
+            )
+            val builder = if (Build.VERSION.SDK_INT >= 26) android.app.Notification.Builder(this, channelId) else @Suppress("DEPRECATION") android.app.Notification.Builder(this)
+            builder.setSmallIcon(R.drawable.ic_archive)
+                .setContentTitle(if (success) "Upload GitHub selesai" else "Upload GitHub gagal")
+                .setContentText(text)
+                .setAutoCancel(true)
+                .setContentIntent(open)
+            manager.notify(99002, builder.build())
+        }
     }
 
     private fun ghStartUpload(kind: String, owner: String, repo: String, branch: String, task: ((GhProgress) -> Unit) -> GhResult) {
         if (ghRunning) { toast("Upload sedang berjalan"); return }
         ghRetry = { ghStartUpload(kind, owner, repo, branch, task) }
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            runCatching { ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 3001) }
+        }
+        ghCancelled = false
+        ghPendingResult = null
+        ghPendingError = null
+        ghFinishedSec = -1
+        ghPct = 0
+        for (i in 0..4) ghStepLast[i] = null
         ghShow(ghProgressScreen(kind, owner, repo, branch), "Proses Upload")
         ghRunning = true
         ghCurrentStep = 0
@@ -7637,20 +7808,61 @@ class MainActivity : Activity() {
         ghHandler.postDelayed(ghTicker, 1000L)
         ghOnProgress(GhProgress(0, "Menyiapkan $kind…"))
         thread {
-            val result = runCatching { task { p -> runOnUiThread { ghOnProgress(p) } } }
+            val result = runCatching {
+                task { p ->
+                    if (ghCancelled) throw GhCancelException()
+                    runOnUiThread { ghOnProgress(p) }
+                }
+            }
             runOnUiThread {
                 ghRunning = false
                 ghHandler.removeCallbacks(ghTicker)
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                result.onSuccess { ghShowResult(it) }.onFailure { ghShowFailure(it) }
+                ghFinishedSec = ((SystemClock.elapsedRealtime() - ghStartedAt) / 1000L).toInt()
+                val visible = ghStage?.isAttachedToWindow == true
+                val cancelled = ghCancelled || result.exceptionOrNull() is GhCancelException
+                ghCancelled = false
+                when {
+                    cancelled -> {
+                        ghPendingResult = null; ghPendingError = null
+                        if (visible) { toast("Upload dibatalkan"); ghShow(ghSettingsScreen(), "Pengaturan GitHub") }
+                    }
+                    result.isSuccess -> {
+                        val r = result.getOrThrow()
+                        if (!visible || !ghAppForeground) ghNotifyDone(true, "${r.owner}/${r.repo} • ${r.files} file berhasil diunggah ke ${r.branch}")
+                        if (visible) ghShowResult(r) else ghPendingResult = r
+                    }
+                    else -> {
+                        val e = result.exceptionOrNull() ?: IOException("Upload gagal")
+                        if (!visible || !ghAppForeground) ghNotifyDone(false, ghFriendlyError(e).take(120))
+                        if (visible) ghShowFailure(e) else ghPendingError = e
+                    }
+                }
             }
         }
     }
 
-    private fun ghOnProgress(p: GhProgress) {
+    private fun ghOnProgress(p: GhProgress, store: Boolean = true) {
+        if (store && p.step >= ghCurrentStep) {
+            ghStepLast[p.step.coerceIn(0, 4)] = p
+            ghPct = when (p.step) {
+                0 -> 4
+                1 -> 12
+                2 -> if (p.total > 0) 15 + (70 * (p.current - 1).coerceAtLeast(0)) / p.total else 15
+                3 -> 88
+                else -> 96
+            }
+            ghCurrentStep = maxOf(ghCurrentStep, p.step)
+        }
         if (ghStage?.isAttachedToWindow != true || ghStepViews.size < 5) return
-        if (p.step < ghCurrentStep) return
+        if (p.step < ghCurrentStep && store) return
         ghCurrentStep = p.step
+        // Setelah tahap "Push", pembatalan tidak lagi aman/berguna.
+        if (p.step >= 3 && !ghCancelled) {
+            ghCancelBtn?.alpha = 0.4f
+            ghCancelBtn?.isEnabled = false
+            ghCancelBtn?.isClickable = false
+        }
         for (i in 0..4) {
             val state = when {
                 i < p.step -> StepStateView.DONE
@@ -7730,7 +7942,7 @@ class MainActivity : Activity() {
     private fun ghShowResult(result: GhResult) {
         if (ghStage?.isAttachedToWindow != true) return
         ghLastResult = result
-        val elapsed = ((SystemClock.elapsedRealtime() - ghStartedAt) / 1000L).toInt()
+        val elapsed = if (ghFinishedSec >= 0) ghFinishedSec else ((SystemClock.elapsedRealtime() - ghStartedAt) / 1000L).toInt()
         val screen = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(2), dp(14), dp(2), dp(24)) }
 
         val badge = SuccessBadgeView(this).apply { inkColor = ghInk; onInkColor = ghOnInk }
@@ -7805,6 +8017,7 @@ class MainActivity : Activity() {
     private fun githubRequestRetry(method: String, url: String, body: JSONObject?, headers: Map<String, String>, attempts: Int = 3): JSONObject {
         var last: IOException? = null
         for (i in 1..attempts) {
+            if (ghCancelled) throw GhCancelException()
             try {
                 return githubRequest(method, url, body, headers)
             } catch (e: IOException) {
@@ -7936,6 +8149,7 @@ class MainActivity : Activity() {
             var count = 0
             fun copyTree(dir: androidx.documentfile.provider.DocumentFile, target: File) {
                 dir.listFiles().forEach { child ->
+                    if (ghCancelled) throw GhCancelException()
                     val name = child.name ?: return@forEach
                     if (name == ".git" || name == "__MACOSX" || name == ".DS_Store" || name == "Thumbs.db") return@forEach
                     val out = File(target, name)
@@ -12174,7 +12388,6 @@ class MainActivity : Activity() {
     private fun workspaceCenterTool() {
         clearPage("Workspace Center")
         val dirs = workspaceRoot().listFiles()?.filter { it.isDirectory }?.sortedByDescending { it.lastModified() } ?: emptyList()
-        content.addView(toolHeader("Workspace Center", "Project lokal • ${dirs.size} workspace", "view-dashboard-outline"), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(9) })
         content.addView(subLabel("Satu tempat untuk project Web, kode, data, dan file kerja.", 11f))
 
         val create = button("+  Workspace Baru") {
@@ -12232,7 +12445,6 @@ class MainActivity : Activity() {
     private fun workspaceDetailTool(dir: File) {
         clearPage("Workspace: ${dir.name}")
         val files = dir.listFiles()?.filter { it.name != "workspace.json" }?.sortedBy { it.name.lowercase(Locale.getDefault()) } ?: emptyList()
-        content.addView(toolHeader(dir.name, "${files.size} item • ${dir.absolutePath}", "folder-open-outline"), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(9) })
         content.addView(compactButtonRow(
             "+ File" to {
                 val n = edit("Nama file", false)
