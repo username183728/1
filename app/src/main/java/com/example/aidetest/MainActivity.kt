@@ -1255,20 +1255,59 @@ class MainActivity : Activity() {
 
     private fun animateSearchSnapTo(target: Float) {
         searchSnapAnimator?.cancel()
-        if (target > 0f && search.visibility != View.VISIBLE) search.visibility = View.VISIBLE
-        val anim = android.animation.ValueAnimator.ofFloat(searchSnapFraction, target)
-        anim.duration = if (target > 0f) 200L else 160L
-        anim.interpolator = android.view.animation.DecelerateInterpolator()
-        anim.addUpdateListener { applySearchSnapFraction(it.animatedValue as Float) }
+        val fullHeight = dp(48)
+        val lp = search.layoutParams as? LinearLayout.LayoutParams ?: return
+
+        if (target > 0f) {
+            // Pulihkan ruang sekali di awal; jangan ubah tinggi setiap frame karena
+            // itu memaksa ScrollView mengukur ulang konten dan membuat kartu bergetar.
+            lp.height = fullHeight
+            lp.bottomMargin = dp(8)
+            search.layoutParams = lp
+            search.visibility = View.VISIBLE
+            search.alpha = 0f
+            search.translationY = -fullHeight.toFloat()
+        } else {
+            search.visibility = View.VISIBLE
+            search.alpha = 1f
+            search.translationY = 0f
+        }
+
+        val anim = android.animation.ValueAnimator.ofFloat(0f, 1f)
+        anim.duration = if (target > 0f) 190L else 150L
+        anim.interpolator = android.view.animation.DecelerateInterpolator(1.4f)
+        anim.addUpdateListener { animator ->
+            val progress = animator.animatedValue as Float
+            if (target > 0f) {
+                search.alpha = progress
+                search.translationY = -fullHeight * (1f - progress)
+            } else {
+                search.alpha = 1f - progress
+                search.translationY = -fullHeight * progress
+            }
+        }
         anim.addListener(object : android.animation.AnimatorListenerAdapter() {
             private var cancelled = false
             override fun onAnimationCancel(animation: android.animation.Animator) { cancelled = true }
             override fun onAnimationEnd(animation: android.animation.Animator) {
                 if (!cancelled) {
-                    applySearchSnapFraction(target)
-                    if (target == 0f) search.visibility = View.GONE
+                    searchSnapFraction = target
+                    search.translationY = 0f
+                    if (target == 0f) {
+                        // Ruang dihapus setelah bar selesai bergerak, bukan frame demi frame.
+                        lp.height = 0
+                        lp.bottomMargin = 0
+                        search.layoutParams = lp
+                        search.alpha = 0f
+                        search.visibility = View.GONE
+                    } else {
+                        lp.height = fullHeight
+                        lp.bottomMargin = dp(8)
+                        search.layoutParams = lp
+                        search.alpha = 1f
+                        search.visibility = View.VISIBLE
+                    }
                 }
-                // Perubahan tinggi viewport bukan gesekan pengguna: reset penghitung scroll.
                 searchSnapLastScrollY = scroll.scrollY
                 searchSnapScrollAccum = 0
             }
@@ -1278,9 +1317,9 @@ class MainActivity : Activity() {
     }
 
     /**
-     * Snap / Enter Always. Bisa dibalik kapan saja (bahkan di tengah animasi), sehingga
-     * satu gerakan kecil selalu direspons. Search bar mengecil naik saat disembunyikan
-     * dan meluncur turun saat muncul kembali.
+     * Search bar mengikuti arah scroll dengan animasi yang stabil.
+     * Ukuran layout hanya berubah sekali setelah animasi selesai agar konten tidak
+     * diukur ulang pada setiap frame dan kartu tidak tampak berkedut.
      */
     private fun setSearchSnap(hide: Boolean) {
         if (!searchSnapEnabled) return
@@ -1306,434 +1345,260 @@ class MainActivity : Activity() {
     }
 
     /**
-     * Cadangan berbasis posisi scroll: menangkap fling / scroll non-sentuh.
-     * Ambang sangat kecil (4dp) agar satu geseran kecil sudah cukup.
+     * Arah scroll menentukan visibilitas search: turun = sembunyi, naik = tampil.
+     * Ambang 18dp mengabaikan perubahan posisi kecil yang biasanya menyebabkan kedipan.
      */
     private fun handleSearchSnapScroll(scrollY: Int) {
         val last = searchSnapLastScrollY
         searchSnapLastScrollY = scrollY
-        if (!searchSnapEnabled || restoringSnapshot) return
-        // Saat animasi berjalan, viewport berubah ukuran; itu bukan gerakan pengguna.
+        if (!searchSnapEnabled || restoringSnapshot || search.hasFocus()) return
+        // Perubahan viewport selama animasi bukan gesture pengguna.
         if (searchSnapAnimator?.isRunning == true) return
+
+        // Saat kembali ke puncak daftar, pulihkan search secara otomatis agar
+        // pengguna tidak terjebak dengan search yang tersembunyi.
         if (scrollY <= 0) {
             searchSnapScrollAccum = 0
-            // Jangan otomatis memunculkan search hanya karena layout kembali
-            // ke posisi 0. Swipe ke bawah dari user yang akan memunculkannya.
+            if (searchSnapHidden) showSearchSnap()
             return
         }
-        val d = scrollY - last
-        if (d == 0) return
-        if ((d > 0) != (searchSnapScrollAccum > 0)) searchSnapScrollAccum = 0
-        searchSnapScrollAccum += d
-        val trigger = dp(4)
-        if (searchSnapScrollAccum >= trigger) {
+
+        val delta = scrollY - last
+        if (delta == 0) return
+        if (searchSnapScrollAccum != 0 && (delta > 0) != (searchSnapScrollAccum > 0)) {
+            searchSnapScrollAccum = 0
+        }
+        searchSnapScrollAccum += delta
+
+        // Ambang lebih besar mengabaikan getaran scroll kecil dari sentuhan/fling.
+        val trigger = dp(18)
+        if (searchSnapScrollAccum >= trigger && !searchSnapHidden) {
             searchSnapScrollAccum = 0
             hideSearchSnap()
-        } else if (searchSnapScrollAccum <= -trigger) {
+        } else if (searchSnapScrollAccum <= -trigger && searchSnapHidden) {
             searchSnapScrollAccum = 0
             showSearchSnap()
         }
     }
 
-    /**
-     * Membaca arah swipe secara langsung.
-     *
-     * Perilaku:
-     * - Swipe ke atas sedikit  -> search bar hilang.
-     * - Setelah hilang, search bar TETAP hilang walaupun scroll diteruskan.
-     * - Swipe ke bawah sedikit -> search bar muncul lagi.
-     *
-     * Hanya satu perubahan diperbolehkan per gesture, sehingga perubahan
-     * tinggi search bar tidak dianggap sebagai gesture/scroll baru.
-     */
-    private fun handleSearchSnapTouch(ev: MotionEvent) {
-        if (!searchSnapEnabled) return
-
-        when (ev.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                val loc = IntArray(2)
-                scroll.getLocationOnScreen(loc)
-                searchSnapTracking =
-                    ev.rawY >= loc[1] && ev.rawY <= loc[1] + scroll.height
-                searchSnapTouchY = ev.rawY
-                searchSnapGesture = 0f
-                searchSnapGestureTriggered = false
-            }
-
-            MotionEvent.ACTION_MOVE -> {
-                if (!searchSnapTracking || searchSnapGestureTriggered) return
-
-                val dy = ev.rawY - searchSnapTouchY
-                searchSnapTouchY = ev.rawY
-                if (dy == 0f) return
-
-                searchSnapGesture += dy
-
-                // Sedikit swipe sudah cukup, tetapi tidak terlalu sensitif.
-                val trigger = dp(8).toFloat()
-
-                // Jari bergerak ke atas = konten bergerak ke bawah.
-                if (searchSnapGesture <= -trigger && !searchSnapHidden) {
-                    searchSnapGestureTriggered = true
-                    searchSnapGesture = 0f
-                    hideSearchSnap()
-                }
-                // Jari bergerak ke bawah = konten bergerak ke atas.
-                else if (searchSnapGesture >= trigger && searchSnapHidden) {
-                    searchSnapGestureTriggered = true
-                    searchSnapGesture = 0f
-                    showSearchSnap()
-                }
-            }
-
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                searchSnapTracking = false
-                searchSnapGesture = 0f
-                searchSnapGestureTriggered = false
-            }
-        }
-    }
-
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        runCatching { handleSearchSnapTouch(ev) }
-        return super.dispatchTouchEvent(ev)
-    }
-
-    private fun clearPage(name: String, showSearch: Boolean = false) {
-        // Calculator sub-modes reuse the same page. Existing calculator methods can
-        // still call clearPage(), but during embedded rendering it must not create a
-        // new navigation entry or wipe the unified workspace.
-        if (embeddedCalculatorRender) return
-        if (currentPage == "IoT Dynamic Topology" && name != "IoT Dynamic Topology") {
-            requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        }
-        stopClipboardMonitor()
-        networkScanStop.set(true)
-        stopEspDiscovery()
-        stopEspSensorPolling()
-
-        // Root tabs are navigation roots, not detail history. Bottom navigation sets
-        // resettingRootNavigation so switching tabs does not retain the old View tree.
-        if (resettingRootNavigation) {
-            pageBackStack.clear()
-        } else if (!restoringSnapshot) {
-            saveCurrentPageSnapshot()
-        }
-
-        currentPage = name
-        topBarVisibility(true)
-        content.removeAllViews()
-        back.setOnClickListener { navigateBack() }
-        val isRoot = name == "home" || name == "all" || name == "favorites" || name == "settings"
-        val isHome = name == "home"
-        title.text = when (name) {
-            "home" -> "GITLS"
-            "all" -> "Semua Tools"
-            "favorites" -> "Favorit"
-            "settings" -> "Pengaturan"
-            else -> name
-        }
-        subtitle.visibility = if (isHome) View.VISIBLE else View.GONE
-        subtitle.text = if (isHome) "Semua alat dalam satu aplikasi" else ""
-        homeMenu.visibility = if (isHome) View.VISIBLE else View.GONE
-        homeProfile.visibility = if (isHome) View.VISIBLE else View.GONE
-        action.visibility = if (isHome) View.GONE else View.VISIBLE
-        back.visibility = if (isHome) View.GONE else View.VISIBLE
-        configureActionForPage(name)
-        if (!isRoot && name != "Editor" && name !in rmAllPages) {
-            // Kotak UTILITY/READY, status "Siap digunakan", dan header tool dihapus.
-            // Riwayat & Info sekarang ada di menu titik tiga kanan atas.
-        }
-        resetSearchSnap(showSearch)
-        // Bottom navigation is only for the four root sections. Every tool page,
-        // including the Editor landing page, gets the full screen so the bottom
-        // bar never covers or distracts from tool controls. Use the top-left Back
-        // button to return to the previous/root page.
-        bottomNav.visibility = if (isRoot && !imeVisible) View.VISIBLE else View.GONE
-        bottomNav.translationY = 0f
-        editorBottomBar.visibility = if (name == "Editor" && !editorLanding) View.VISIBLE else View.GONE
-        editorMore.visibility = if (name == "Editor" && !editorLanding) View.VISIBLE else View.GONE
-        if (isRoot) selectBottomNav(name)
-        // IoT Dynamic membutuhkan canvas benar-benar memenuhi viewport.
-        val contentParams = content.layoutParams
-        contentParams.height = if (name == "IoT Dynamic Topology" || name == "Editor") ViewGroup.LayoutParams.MATCH_PARENT else ViewGroup.LayoutParams.WRAP_CONTENT
-        content.layoutParams = contentParams
-        // Tool pages use the entire available content area. The bottom navigation is
-        // already hidden above, so inputs/actions can use the full width without a
-        // small "second row" feeling at the bottom of the screen.
-        if (name == "Kalkulator Dasar" || name == "Kalkulator Ilmiah") {
-            content.setPadding(0, dp(4), 0, dp(10))
-        } else if (name == "Editor") {
-            content.setPadding(dp(6), dp(4), dp(6), dp(8))
-        } else if (name in rmAllPages) {
-            content.setPadding(dp(16), dp(6), dp(16), dp(20))
-        } else {
-            content.setPadding(dp(10), dp(4), dp(10), dp(14))
-        }
-    }
-
-    private fun label(text: String, size: Float = 16f, bold: Boolean = false): TextView = TextView(this).apply {
-        this.text = text
-        textSize = size
-        setTextColor(textMain)
-        setPadding(dp(2), dp(6), dp(2), dp(6))
-        if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
-    }
-
-    private fun subLabel(text: String, size: Float = 12f): TextView = TextView(this).apply {
-        this.text = text
-        textSize = size.coerceAtLeast(Ds.TEXT_CAPTION_MIN)
-        setTextColor(textMuted)
-        setPadding(dp(2), 0, dp(2), 0)
-    }
-
-    private fun animateToolItem(view: View, index: Int = 0) {
-        view.animate().cancel()
-        view.alpha = 0f
-        view.translationY = dp(12).toFloat()
-        val delay = (index.coerceAtMost(7) * 34L)
-        view.animate()
-            .alpha(1f)
-            .translationY(0f)
-            .setStartDelay(delay)
-            .setDuration(230L)
-            .setInterpolator(android.view.animation.DecelerateInterpolator(1.5f))
-            .start()
-    }
-
-    private fun openToolWithPress(id: String, view: View) {
-        view.animate().cancel()
-        view.animate()
-            .scaleX(0.975f).scaleY(0.975f)
-            .setDuration(65L)
-            .setInterpolator(android.view.animation.DecelerateInterpolator())
-            .withEndAction {
-                view.animate().scaleX(1f).scaleY(1f)
-                    .setDuration(95L)
-                    .setInterpolator(android.view.animation.DecelerateInterpolator())
-                    .start()
-                view.postDelayed({ openTool(id) }, 35L)
-            }.start()
-    }
-
-    private fun animateToolChildren(container: ViewGroup, fromIndex: Int = 0) {
-        for (i in fromIndex until container.childCount) {
-            val child = container.getChildAt(i)
-            if (child.visibility == View.VISIBLE) animateToolItem(child, i - fromIndex)
-        }
-    }
-
-    private fun animateToolChildrenOnce(container: ViewGroup, fromIndex: Int = 0) {
-        if (initialToolAnimationPlayed) return
-        initialToolAnimationPlayed = true
-        animateToolChildren(container, fromIndex)
-    }
-
-    /**
-     * Shared UI surface used by tool cards. Keeps the whole app visually
-     * consistent while giving touchable surfaces real depth and feedback.
-     */
-    private fun applyInteractiveSurface(view: View, radius: Int = 16, elevation: Int = 2) {
-        val base = bg(panel2, radius, line)
-        val rippleColor = if (isDarkTheme) Color.argb(42, 255, 255, 255) else Color.argb(30, 0, 0, 0)
-        view.background = RippleDrawable(ColorStateList.valueOf(rippleColor), base, bg(Color.WHITE, radius))
-        view.elevation = dp(elevation).toFloat()
-        view.isClickable = true
-        view.isFocusable = true
-        view.stateListAnimator = null
-    }
-
-    private fun addPressFeedback(view: View) {
-        view.setOnTouchListener { v, event ->
-            when (event.actionMasked) {
-                android.view.MotionEvent.ACTION_DOWN -> {
-                    v.animate().scaleX(0.985f).scaleY(0.985f).setDuration(70).start()
-                }
-                android.view.MotionEvent.ACTION_UP,
-                android.view.MotionEvent.ACTION_CANCEL -> {
-                    v.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
-                }
-            }
-            false
-        }
-    }
-
-    private fun toolCard(id: String, name: String, icon: String = "▣", compact: Boolean = false): LinearLayout {
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = dp(if (compact) 60 else 68)
-            setPadding(dp(if (compact) 12 else 14), dp(10), dp(if (compact) 12 else 14), dp(10))
-            contentDescription = "$name. Buka alat"
-        }
-        applyInteractiveSurface(card, if (compact) 14 else 17, if (compact) 1 else 2)
-        addPressFeedback(card)
-        card.setOnClickListener { openToolWithPress(id, card) }
-
-        // Icon langsung tampil tanpa kotak/background hitam.
-        // Ukuran area tetap dipertahankan agar posisi teks semua kartu konsisten.
-        val ico = MdiIconView(this).apply {
-            setIconName(icon)
-            setIconSize(if (compact) 22f else 24f)
-            setTextColor(Color.rgb(30, 30, 30))
-            background = null
-            setPadding(0, 0, 0, 0)
-        }
-        card.addView(ico, LinearLayout.LayoutParams(dp(if (compact) 38 else 44), dp(if (compact) 38 else 44)))
-        val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12),0,0,0) }
-        texts.addView(label(name, if (compact) 14f else 15f, true))
-        texts.addView(subLabel("Buka alat", 11f))
-        card.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
-        val arrow = TextView(this).apply {
-            text = "›"; textSize = 24f; setTextColor(textMuted); gravity = Gravity.CENTER
-            contentDescription = "Buka $name"
-        }
-        card.addView(arrow, LinearLayout.LayoutParams(dp(30), -1))
-        return card
-    }
-
-    private fun favoriteCard(id: String, name: String, icon: String): LinearLayout {
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(4), dp(10), dp(4), dp(8))
-            minimumHeight = dp(88)
-            contentDescription = "$name. Favorit"
-        }
-        applyInteractiveSurface(card, 15, 1)
-        addPressFeedback(card)
-        card.setOnClickListener { openToolWithPress(id, card) }
-        val ico = MdiIconView(this).apply {
-            setIconName(icon)
-            setIconSize(22f)
-            setTextColor(textMain)
-        }
-        card.addView(ico, LinearLayout.LayoutParams(-1, dp(34)))
-        card.addView(TextView(this).apply { text = name; textSize = 11f; gravity = Gravity.CENTER; setTextColor(textMain) }, LinearLayout.LayoutParams(-1, dp(22)))
-        card.addView(TextView(this).apply { text = "Favorit"; textSize = 9f; gravity = Gravity.CENTER; setTextColor(textMuted) })
-        return card
-    }
-
-    private fun sectionTitle(titleText: String, actionText: String? = null, actionClick: (() -> Unit)? = null) {
-        val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(18), 0, dp(8)) }
-        row.addView(label(titleText.toUpperCase(Locale.getDefault()), 12f, true), LinearLayout.LayoutParams(0, -2, 1f))
-        if (actionText != null) row.addView(TextView(this).apply {
-            text = actionText.toUpperCase(Locale.getDefault()); textSize = 10f; setTextColor(textMuted); setOnClickListener { actionClick?.invoke() }
-        })
-        content.addView(row)
-    }
-
-    private fun navigateRoot(action: () -> Unit) {
-        resettingRootNavigation = true
-        try { action() } finally { resettingRootNavigation = false }
-    }
 
     private fun showHome(filter: String = homeFilter) {
         homeFilter = filter
         clearPage("home", true)
         content.setPadding(dp(12), dp(8), dp(12), dp(18))
 
-        val filterRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(4), 0, dp(8))
-        }
-        val filters = listOf("Semua", "Favorit", "Terbaru", "Populer")
-        filters.forEachIndexed { index, value ->
-            filterRow.addView(
-                homeChip(value, value == homeFilter) { showHome(value) },
-                LinearLayout.LayoutParams(0, dp(38), 1f).apply {
-                    if (index > 0) leftMargin = dp(2)
-                    if (index < filters.lastIndex) rightMargin = dp(2)
-                }
-            )
-        }
-        content.addView(filterRow, LinearLayout.LayoutParams(-1, dp(46)))
-
-        val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        titleRow.addView(label("Tools", 19f, true), LinearLayout.LayoutParams(0, -2, 1f))
-        titleRow.addView(TextView(this).apply {
-            text = "${filteredHomeItems(homeFilter).size} tools  ›"
-            textSize = 12f
-            setTextColor(textMuted)
-            setOnClickListener { showAllTools() }
-            setPadding(dp(6), dp(8), 0, dp(8))
-        })
-        content.addView(titleRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
-
-        // Terbaru = tool yang baru ditambahkan/diperbarui, bukan sekadar riwayat pemakaian.
-        if (homeFilter == "Semua") {
-            val latest = latestUpdatedToolIds()
-            if (latest.isNotEmpty()) {
-                sectionTitle("Terbaru", "Lihat semua") { showHome("Terbaru") }
-                content.addView(subLabel("Tools yang baru atau baru saja diperbarui.", 11f).apply {
-                    setPadding(dp(2), 0, dp(2), dp(5))
-                })
-                val latestGrid = GridLayout(this).apply {
-                    columnCount = 2
-                    alignmentMode = GridLayout.ALIGN_BOUNDS
-                    useDefaultMargins = false
-                }
-                latest.take(4).forEach { id ->
-                    val item = homeToolMap[id]?.let { id to it } ?: return@forEach
-                    val card = latestToolCard(item.first, item.second)
-                    latestGrid.addView(card, GridLayout.LayoutParams().apply {
-                        width = 0
-                        height = dp(104)
-                        columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
-                        rowSpec = GridLayout.spec(GridLayout.UNDEFINED)
-                        setMargins(dp(4), dp(4), dp(4), dp(4))
+        // Beranda dibuat sebagai ringkasan aplikasi: kategori Tools + daftar Studio.
+        // Filter lama tetap dipakai untuk menjaga perilaku pencarian/favorit.
+        if (filter != "Semua") {
+            val title = when (filter) {
+                "Favorit" -> "Favorit"
+                "Terbaru" -> "Terbaru"
+                "Populer" -> "Populer"
+                else -> "Tools"
+            }
+            val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(4), 0, dp(10)) }
+            row.addView(label(title, 20f, true), LinearLayout.LayoutParams(0, -2, 1f))
+            content.addView(row)
+            val items = filteredHomeItems(filter)
+            if (items.isEmpty()) {
+                content.addView(subLabel("Belum ada tool pada bagian ini.", 13f))
+            } else {
+                items.forEach { (id, name) ->
+                    content.addView(toolCard(id, name, iconFor(id)).apply {
+                        layoutParams = LinearLayout.LayoutParams(-1, dp(70)).apply { bottomMargin = dp(7) }
                     })
                 }
-                content.addView(latestGrid, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(5) })
             }
+            return
         }
 
-        if (prefs.getBoolean("show_quick_access", false)) {
-            sectionTitle("Akses Cepat")
-            val quick = defaultPreferredTools().take(4).mapNotNull { id -> homeToolMap[id]?.let { id to it } }
-            quick.forEach { (id,n) -> content.addView(toolCard(id,n,iconFor(id)).apply { layoutParams = LinearLayout.LayoutParams(-1, dp(62)).apply { bottomMargin=dp(6) } }) }
-        }
-        if (prefs.getBoolean("show_recent_activity", false)) {
-            sectionTitle("Aktivitas Terakhir")
-            val recent = prefs.getString("recent_tools", "")?.split(',')?.filter { it.isNotBlank() }?.take(4) ?: emptyList()
-            recent.mapNotNull { id -> homeToolMap[id]?.let { id to it } }.forEach { (id,n) -> content.addView(toolCard(id,n,iconFor(id)).apply { layoutParams = LinearLayout.LayoutParams(-1, dp(62)).apply { bottomMargin=dp(6) } }) }
-        }
-
-        val grid = GridLayout(this).apply {
-            columnCount = prefs.getInt("home_columns", 2).coerceIn(1, 3)
+        // ==================== TOOLS ====================
+        homeSectionHeader("Tools", "Lihat Semua") { showAllTools() }
+        val toolGrid = GridLayout(this).apply {
+            columnCount = 2
             alignmentMode = GridLayout.ALIGN_BOUNDS
             useDefaultMargins = false
         }
-        val visibleHomeItems = filteredHomeItems(homeFilter)
-        if (prefs.getBoolean("show_home_tools", true)) visibleHomeItems.forEach { (id, name) ->
-            val lp = GridLayout.LayoutParams().apply {
+
+        val toolCategories = listOf(
+            HomeCategory("SECURITY", "17 tools", "shield-check-outline", listOf(
+                "securitycenter", "hash", "checksum", "password", "passwordstrength", "hmac", "jwt", "totp", "aes",
+                "fileencryption", "securenotes", "totpvault", "pgp", "sshkeygen", "certviewer", "virusscanner", "urlsafety"
+            )),
+            HomeCategory("NETWORK", "13 tools", "web", listOf(
+                "network", "dns", "rdns", "ping", "traceroute", "whois", "port", "netscanner", "subnetcalc", "publicip", "ipinfo", "ssl", "http"
+            )),
+            HomeCategory("MEDIA & COLOR", "3 tools", "palette-outline", listOf("imagestudio", "imageinfo", "imagetools")),
+            HomeCategory("QR / OCR", "1 tool", "qrcode", listOf("qr")),
+            HomeCategory("FINANCE", "2 tools", "bank-outline", listOf("financereader", "financedashboard")),
+            HomeCategory("WEB & HOSTING", "1 tool", "link-variant", listOf("webproject")),
+            HomeCategory("UTILITY", "2 tools", "toolbox-outline", listOf("stopwatch", "timer")),
+            HomeCategory("LAINNYA", "11 tools", "view-grid-outline", listOf(
+                "filemanager", "editor", "reminder", "zip", "githubzip", "json", "color", "number", "apk", "system", "storage"
+            ))
+        )
+
+        toolCategories.forEach { category ->
+            val card = homeCategoryCard(category)
+            toolGrid.addView(card, GridLayout.LayoutParams().apply {
                 width = 0
-                height = dp(116)
+                height = dp(82)
                 columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
                 rowSpec = GridLayout.spec(GridLayout.UNDEFINED)
                 setMargins(dp(4), dp(4), dp(4), dp(4))
-            }
-            grid.addView(mainPyToolCard(id, name), lp)
-        }
-        if (visibleHomeItems.isEmpty()) {
-            grid.addView(TextView(this).apply {
-                text = when (homeFilter) {
-                    "Favorit" -> "Belum ada tool favorit."
-                    "Terbaru" -> "Belum ada riwayat tool."
-                    else -> "Tidak ada tool pada filter ini."
-                }
-                textSize = 13f
-                setTextColor(textMuted)
-                gravity = Gravity.CENTER
-                setPadding(dp(20), dp(40), dp(20), dp(40))
-            }, GridLayout.LayoutParams().apply {
-                columnSpec = GridLayout.spec(0, 2)
-                width = -1
             })
         }
-        content.addView(grid, LinearLayout.LayoutParams(-1, -2))
-        // No staggered card animation here: large tool grids should render immediately.
+        content.addView(toolGrid, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
+
+        // ==================== STUDIO ====================
+        homeSectionHeader("Studio", "Lihat Semua") { showAllStudios() }
+        val studios = listOf(
+            Triple("Web Project Builder", "web-box", "webproject"),
+            Triple("Network Studio", "web", "networkstudio"),
+            Triple("Developer Studio", "code-tags", "developerstudio"),
+            Triple("File Studio", "folder-outline", "filestudio"),
+            Triple("Image Studio", "image-outline", "imagestudio"),
+            Triple("Finance Studio", "bank-outline", "financestudio"),
+            Triple("System Studio", "cog-outline", "systemstudio")
+        )
+        studios.forEach { (name, icon, id) ->
+            content.addView(homeStudioCard(name, icon, id), LinearLayout.LayoutParams(-1, dp(76)).apply {
+                bottomMargin = dp(7)
+            })
+        }
+    }
+
+    private data class HomeCategory(
+        val name: String,
+        val count: String,
+        val icon: String,
+        val ids: List<String>
+    )
+
+    private fun homeSectionHeader(titleText: String, actionText: String, actionClick: () -> Unit) {
+        val row = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(10), 0, dp(6))
+        }
+        val gridIcon = MdiIconView(this).apply {
+            setIconName("view-grid")
+            setIconSize(21f)
+            setTextColor(textMain)
+        }
+        row.addView(gridIcon, LinearLayout.LayoutParams(dp(28), dp(28)).apply { rightMargin = dp(5) })
+        row.addView(label(titleText, 19f, true), LinearLayout.LayoutParams(0, -2, 1f))
+        row.addView(TextView(this).apply {
+            text = actionText + "  ›"
+            textSize = 12f
+            setTextColor(textMuted)
+            setPadding(dp(6), dp(8), 0, dp(8))
+            setOnClickListener { actionClick() }
+            contentDescription = "$actionText $titleText"
+        })
+        content.addView(row, LinearLayout.LayoutParams(-1, -2))
+    }
+
+    private fun homeCategoryCard(category: HomeCategory): LinearLayout {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(8), dp(8), dp(8))
+            contentDescription = "${category.name}, ${category.count}"
+        }
+        applyInteractiveSurface(card, 18, 1)
+        card.setOnClickListener {
+            val ids = category.ids.filter { homeToolMap.containsKey(it) }
+            showCategory(category.name, ids)
+        }
+
+        val iconBox = LinearLayout(this).apply {
+            gravity = Gravity.CENTER
+            background = bg(if (isDarkTheme) Color.rgb(42, 47, 52) else Color.rgb(232, 241, 247), 14)
+        }
+        iconBox.addView(MdiIconView(this).apply {
+            setIconName(category.icon)
+            setIconSize(23f)
+            setTextColor(if (isDarkTheme) Color.WHITE else Color.rgb(82, 96, 112))
+        }, LinearLayout.LayoutParams(dp(42), dp(42)))
+        card.addView(iconBox, LinearLayout.LayoutParams(dp(42), dp(42)))
+
+        val texts = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(11), 0, dp(4), 0)
+        }
+        texts.addView(label(category.name, 12.5f, true))
+        texts.addView(subLabel(category.count, 10.5f))
+        card.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
+        card.addView(TextView(this).apply {
+            text = "›"
+            textSize = 22f
+            setTextColor(textMuted)
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(dp(20), dp(42)))
+        return card
+    }
+
+    private fun homeStudioCard(name: String, iconName: String, id: String): LinearLayout {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(8), dp(8), dp(8))
+            contentDescription = "$name. Buka Studio"
+        }
+        applyInteractiveSurface(card, 18, 1)
+        card.setOnClickListener { openTool(id) }
+
+        val iconBox = LinearLayout(this).apply {
+            gravity = Gravity.CENTER
+            background = bg(if (isDarkTheme) Color.rgb(42, 47, 52) else Color.rgb(232, 241, 247), 13)
+        }
+        iconBox.addView(MdiIconView(this).apply {
+            setIconName(iconName)
+            setIconSize(21f)
+            setTextColor(if (isDarkTheme) Color.WHITE else Color.rgb(82, 96, 112))
+        }, LinearLayout.LayoutParams(dp(42), dp(42)))
+        card.addView(iconBox, LinearLayout.LayoutParams(dp(42), dp(42)))
+
+        val texts = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(11), 0, dp(6), 0)
+        }
+        texts.addView(label(name, 13.5f, false))
+        texts.addView(subLabel("Buka Studio", 10.5f))
+        card.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
+        card.addView(TextView(this).apply {
+            text = "›"
+            textSize = 22f
+            setTextColor(textMuted)
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(dp(22), dp(42)))
+        return card
+    }
+
+    private fun showAllStudios() {
+        clearPage("all", true)
+        suppressSearch = true
+        search.setText("")
+        suppressSearch = false
+        content.addView(label("Semua Studio", 22f, true))
+        content.addView(subLabel("Ruang kerja untuk membuat dan mengelola proyek.", 12f).apply {
+            setPadding(0, 0, 0, dp(10))
+        })
+        val studios = listOf(
+            Triple("Web Project Builder", "web-box", "webproject"),
+            Triple("Network Studio", "web", "networkstudio"),
+            Triple("Developer Studio", "code-tags", "developerstudio"),
+            Triple("File Studio", "folder-outline", "filestudio"),
+            Triple("Image Studio", "image-outline", "imagestudio"),
+            Triple("Finance Studio", "bank-outline", "financestudio"),
+            Triple("System Studio", "cog-outline", "systemstudio"),
+            Triple("Utility Studio", "toolbox-outline", "utilitystudio")
+        )
+        studios.forEach { (name, icon, id) ->
+            content.addView(homeStudioCard(name, icon, id), LinearLayout.LayoutParams(-1, dp(76)).apply {
+                bottomMargin = dp(7)
+            })
+        }
     }
 
     private fun filteredHomeItems(filter: String): List<Pair<String, String>> {

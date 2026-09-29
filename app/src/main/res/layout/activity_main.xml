@@ -108,7 +108,7 @@
             android:layout_marginEnd="16dp"
             android:layout_marginBottom="8dp"
             android:background="@drawable/bg_search_light"
-            android:hint="Cari tools..."
+            android:hint="Cari tools, studio, atau proyek..."
             android:singleLine="true"
             android:inputType="text"
             android:imeOptions="actionSearch"
