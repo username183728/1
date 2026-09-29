@@ -99,6 +99,7 @@ class MainActivity : Activity() {
     private var searchSnapTouchY = 0f
     private var searchSnapTracking = false
     private var searchSnapGesture = 0f
+    private var searchSnapGestureTriggered = false
     private var searchSnapLastScrollY = 0
     private var searchSnapScrollAccum = 0
     private lateinit var bottomNav: LinearLayout
@@ -814,8 +815,20 @@ class MainActivity : Activity() {
     private fun applyUiColors() {
         mainContainer.setBackgroundColor(dark)
         content.setBackgroundColor(dark)
-        search.setBackgroundColor(panel)
-        search.setTextColor(textMain); search.setHintTextColor(textMuted)
+
+        // Search bar harus hanya punya SATU background berbentuk pill.
+        // Jangan gunakan setBackgroundColor() karena itu mengganti drawable
+        // rounded menjadi kotak biasa.
+        search.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(panel)
+            cornerRadius = dp(24).toFloat()
+            setStroke(dp(1), line)
+        }
+        search.setTextColor(textMain)
+        search.setHintTextColor(textMuted)
+        search.setPadding(dp(16), 0, dp(16), 0)
+
         applyBottomNavShape()
     }
 
@@ -1217,6 +1230,7 @@ class MainActivity : Activity() {
         searchSnapScrollAccum = 0
         searchSnapLastScrollY = scroll.scrollY
         searchSnapGesture = 0f
+        searchSnapGestureTriggered = false
         search.animate().cancel()
         search.translationY = 0f
         applySearchSnapFraction(1f)
@@ -1303,7 +1317,8 @@ class MainActivity : Activity() {
         if (searchSnapAnimator?.isRunning == true) return
         if (scrollY <= 0) {
             searchSnapScrollAccum = 0
-            showSearchSnap()
+            // Jangan otomatis memunculkan search hanya karena layout kembali
+            // ke posisi 0. Swipe ke bawah dari user yang akan memunculkannya.
             return
         }
         val d = scrollY - last
@@ -1321,40 +1336,60 @@ class MainActivity : Activity() {
     }
 
     /**
-     * Membaca gerakan jari langsung dari semua sentuhan di area konten.
-     * - Jari naik sedikit (konten bergulir ke bawah) -> search tersembunyi.
-     * - Jari turun sedikit (konten bergulir ke atas) -> search muncul lagi,
-     *   di posisi scroll mana pun (Enter Always).
+     * Membaca arah swipe secara langsung.
+     *
+     * Perilaku:
+     * - Swipe ke atas sedikit  -> search bar hilang.
+     * - Setelah hilang, search bar TETAP hilang walaupun scroll diteruskan.
+     * - Swipe ke bawah sedikit -> search bar muncul lagi.
+     *
+     * Hanya satu perubahan diperbolehkan per gesture, sehingga perubahan
+     * tinggi search bar tidak dianggap sebagai gesture/scroll baru.
      */
     private fun handleSearchSnapTouch(ev: MotionEvent) {
         if (!searchSnapEnabled) return
+
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val loc = IntArray(2)
                 scroll.getLocationOnScreen(loc)
-                searchSnapTracking = ev.rawY >= loc[1] && ev.rawY <= loc[1] + scroll.height
+                searchSnapTracking =
+                    ev.rawY >= loc[1] && ev.rawY <= loc[1] + scroll.height
                 searchSnapTouchY = ev.rawY
                 searchSnapGesture = 0f
+                searchSnapGestureTriggered = false
             }
+
             MotionEvent.ACTION_MOVE -> {
-                if (!searchSnapTracking) return
+                if (!searchSnapTracking || searchSnapGestureTriggered) return
+
                 val dy = ev.rawY - searchSnapTouchY
                 searchSnapTouchY = ev.rawY
-                // Ganti arah = hitung ulang, supaya satu sentuhan kecil cukup.
-                if (dy != 0f && (dy > 0f) != (searchSnapGesture > 0f)) searchSnapGesture = 0f
+                if (dy == 0f) return
+
                 searchSnapGesture += dy
-                val trigger = dp(4).toFloat()
-                if (searchSnapGesture >= trigger) {
-                    searchSnapGesture = 0f
-                    showSearchSnap()
-                } else if (searchSnapGesture <= -trigger) {
+
+                // Sedikit swipe sudah cukup, tetapi tidak terlalu sensitif.
+                val trigger = dp(8).toFloat()
+
+                // Jari bergerak ke atas = konten bergerak ke bawah.
+                if (searchSnapGesture <= -trigger && !searchSnapHidden) {
+                    searchSnapGestureTriggered = true
                     searchSnapGesture = 0f
                     hideSearchSnap()
                 }
+                // Jari bergerak ke bawah = konten bergerak ke atas.
+                else if (searchSnapGesture >= trigger && searchSnapHidden) {
+                    searchSnapGestureTriggered = true
+                    searchSnapGesture = 0f
+                    showSearchSnap()
+                }
             }
+
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 searchSnapTracking = false
                 searchSnapGesture = 0f
+                searchSnapGestureTriggered = false
             }
         }
     }
@@ -1535,11 +1570,14 @@ class MainActivity : Activity() {
         addPressFeedback(card)
         card.setOnClickListener { openToolWithPress(id, card) }
 
+        // Icon langsung tampil tanpa kotak/background hitam.
+        // Ukuran area tetap dipertahankan agar posisi teks semua kartu konsisten.
         val ico = MdiIconView(this).apply {
             setIconName(icon)
-            setIconSize(if (compact) 18f else 20f)
-            setTextColor(Color.WHITE)
-            background = bg(Color.rgb(22,22,24), if (compact) 11 else 13)
+            setIconSize(if (compact) 22f else 24f)
+            setTextColor(Color.rgb(30, 30, 30))
+            background = null
+            setPadding(0, 0, 0, 0)
         }
         card.addView(ico, LinearLayout.LayoutParams(dp(if (compact) 38 else 44), dp(if (compact) 38 else 44)))
         val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12),0,0,0) }
