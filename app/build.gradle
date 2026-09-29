@@ -13,8 +13,15 @@ android {
         applicationId "com.example.aidetest"
         minSdkVersion 23
         targetSdkVersion 36
-        versionCode (project.findProperty("versionCode") ?: "46").toString().toInteger()
-        versionName (project.findProperty("versionName") ?: "2.30.0").toString()
+        def configuredVersionCode = project.hasProperty("versionCode")
+                ? Integer.parseInt(project.property("versionCode").toString())
+                : 46
+        def configuredVersionName = project.hasProperty("versionName")
+                ? project.property("versionName").toString()
+                : "2.30.0"
+
+        versionCode configuredVersionCode
+        versionName configuredVersionName
 
         def repo = (project.findProperty("githubRepository") ?: "OWNER/REPO").toString().replace("\\", "\\\\").replace("\"", "\\\"")
         buildConfigField "String", "GITHUB_REPOSITORY", "\"${repo}\""
