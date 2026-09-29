@@ -15,10 +15,10 @@ android {
         targetSdkVersion 36
         def configuredVersionCode = project.hasProperty("versionCode")
                 ? Integer.parseInt(project.property("versionCode").toString())
-                : 46
+                : 48
         def configuredVersionName = project.hasProperty("versionName")
                 ? project.property("versionName").toString()
-                : "2.30.0"
+                : "2.35.0"
 
         versionCode configuredVersionCode
         versionName configuredVersionName

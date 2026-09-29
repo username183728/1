@@ -579,13 +579,13 @@ class MainActivity : Activity() {
         if (requestCode == 3025 && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
             runCatching { writeAppBackup(uri) }
-                .onSuccess { toast("Backup V2.25 berhasil disimpan") }
+                .onSuccess { toast("Backup V2.32 berhasil disimpan") }
                 .onFailure { toast("Backup gagal: ${it.message}") }
             return
         }
         if (requestCode == 3026 && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
-            AlertDialog.Builder(this).setTitle("Restore Backup V2.25?")
+            AlertDialog.Builder(this).setTitle("Restore Backup V2.32?")
                 .setMessage("Pengaturan, history, dan Recent Files dari backup akan diterapkan. File kerja tidak dihapus otomatis.")
                 .setNegativeButton("Batal", null)
                 .setPositiveButton("Restore") { _, _ ->
@@ -1412,6 +1412,9 @@ class MainActivity : Activity() {
             return
         }
 
+        // ==================== DASHBOARD ====================
+        homeDashboardCard()
+
         // ==================== TOOLS ====================
         homeSectionHeader("Tools", "Lihat Semua") { showAllTools() }
         val toolGrid = GridLayout(this).apply {
@@ -1466,6 +1469,70 @@ class MainActivity : Activity() {
                 bottomMargin = dp(7)
             })
         }
+    }
+
+    private fun homeDashboardCard() {
+        val historyCount = runCatching {
+            JSONArray(prefs.getString("history", "[]") ?: "[]").length()
+        }.getOrDefault(0)
+        val favoriteCount = favoriteToolIds().size
+        val reminderCount = runCatching {
+            JSONArray(prefs.getString("reminders", "[]") ?: "[]").length()
+        }.getOrDefault(0)
+        val toolCount = homeToolMap.size
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(10))
+            contentDescription = "Ringkasan MyTools"
+        }
+        applyInteractiveSurface(card, 18, 1)
+
+        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        header.addView(MdiIconView(this).apply {
+            setIconName("view-dashboard-outline")
+            setIconSize(21f)
+            setTextColor(textMain)
+        }, LinearLayout.LayoutParams(dp(30), dp(30)).apply { rightMargin = dp(5) })
+        header.addView(label("Ringkasan", 17f, true), LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(TextView(this).apply {
+            text = "Detail  ›"
+            textSize = 11.5f
+            setTextColor(textMuted)
+            setPadding(dp(5), dp(7), 0, dp(7))
+            setOnClickListener { showSettings() }
+            contentDescription = "Buka pengaturan MyTools"
+        })
+        card.addView(header)
+
+        val stats = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(9), 0, 0)
+        }
+        fun stat(icon: String, value: String, title: String, click: (() -> Unit)? = null): View {
+            return LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(5), dp(5), dp(5), dp(5))
+                contentDescription = "$title: $value"
+                addView(MdiIconView(this@MainActivity).apply {
+                    setIconName(icon); setIconSize(19f); setTextColor(textMuted)
+                }, LinearLayout.LayoutParams(dp(24), dp(24)))
+                addView(label(value, 16f, true).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(-1, -2))
+                addView(subLabel(title, 9.5f).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(-1, -2))
+                if (click != null) setOnClickListener { click() }
+            }
+        }
+        stats.addView(stat("star-outline", favoriteCount.toString(), "Favorit") { showFavorites() }, LinearLayout.LayoutParams(0, -2, 1f))
+        stats.addView(stat("history", historyCount.toString(), "Aktivitas") { historyTool() }, LinearLayout.LayoutParams(0, -2, 1f))
+        stats.addView(stat("bell-outline", reminderCount.toString(), "Reminder") { openTool("reminder") }, LinearLayout.LayoutParams(0, -2, 1f))
+        stats.addView(stat("tools", toolCount.toString(), "Tools") { showAllTools() }, LinearLayout.LayoutParams(0, -2, 1f))
+        card.addView(stats)
+
+        content.addView(card, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(7)
+        })
     }
 
     private data class HomeCategory(
@@ -2140,10 +2207,29 @@ class MainActivity : Activity() {
         content.setPadding(dp(12), dp(8), dp(12), dp(18))
 
         settingsSection("Tampilan")
-        content.addView(settingRowClickable("Tema", if (isDarkTheme) "Gelap" else "Terang", "Atur tampilan aplikasi", "weather-sunny" ) {
-            val nextDark = !isDarkTheme
-            prefs.edit().putString("theme_mode", if (nextDark) "dark" else "light").apply()
-            applySystemTheme()
+        val themeMode = prefs.getString("theme_mode", "system") ?: "system"
+        val themeLabel = when (themeMode) {
+            "dark" -> "Gelap"
+            "light" -> "Terang"
+            else -> "Ikuti Sistem"
+        }
+        content.addView(settingRowClickable("Tema", themeLabel, "Pilih tampilan terang, gelap, atau mengikuti sistem", "theme-light-dark") {
+            val modes = listOf("system" to "Ikuti Sistem", "light" to "Terang", "dark" to "Gelap")
+            val current = modes.indexOfFirst { it.first == (prefs.getString("theme_mode", "system") ?: "system") }.coerceAtLeast(0)
+            AlertDialog.Builder(this)
+                .setTitle("Tema Aplikasi")
+                .setSingleChoiceItems(modes.map { it.second }.toTypedArray(), current) { dialog, which ->
+                    prefs.edit().putString("theme_mode", modes[which].first).apply()
+                    applySystemTheme()
+                    applyUiColors()
+                    dialog.dismiss()
+                    showSettings()
+                }.setNegativeButton("Batal", null).show()
+        })
+        content.addView(settingRowClickable("Animasi UI", if (prefs.getBoolean("ui_animations", true)) "Aktif" else "Nonaktif", "Aktifkan atau kurangi animasi perpindahan antarmuka", "animation-outline") {
+            val next = !prefs.getBoolean("ui_animations", true)
+            prefs.edit().putBoolean("ui_animations", next).apply()
+            toast(if (next) "Animasi UI diaktifkan" else "Animasi UI dikurangi")
             showSettings()
         })
         content.addView(settingRowClickable("Kolom Beranda", prefs.getInt("home_columns", 2).toString() + " kolom", "Jumlah kolom tool di Beranda", "view-grid-outline") {
@@ -2191,10 +2277,100 @@ class MainActivity : Activity() {
                 }.show()
         })
 
+        settingsSection("Data & Penyimpanan")
+        content.addView(settingRowClickable("Backup & Restore", "Backup lokal ZIP", "backup-restore", "Simpan pengaturan dan data aplikasi ke file ZIP yang bisa dipulihkan nanti.") { openTool("backuprestore") })
+        content.addView(settingRowClickable("Penyimpanan Aplikasi", appDataStorageText(), "database", "Lihat ukuran data MyTools dan cache yang digunakan.") { showAppDataStorageDialog() })
+        content.addView(settingRowClickable("Bersihkan Cache", formatBytes(cacheDirSize()), "broom-outline", "Hapus cache sementara tanpa menghapus pengaturan atau data penting.") { confirmClearAppCache() })
+        content.addView(settingRowClickable("Reset Pengaturan", "Hanya preferensi", "restore-settings", "Kembalikan preferensi MyTools ke kondisi awal tanpa menghapus file kerja.") { confirmResetPreferences() })
+
         settingsSection("Aplikasi")
-        content.addView(settingRowClickable("Tentang", "GITLS 2.24.0", "information-outline") {
-            AlertDialog.Builder(this).setTitle("GITLS").setMessage("Utility Suite • Web Hosting Wi-Fi • Network • Developer • ESP • Finance • Image • Color").setPositiveButton("OK", null).show()
+        content.addView(settingRowClickable("Pembaruan Aplikasi", "Versi 2.36.0", "update", "Periksa pembaruan APK dari sistem update MyTools.") {
+            runCatching { AppUpdateManager(this).checkForUpdate() }.onFailure { toast("Pemeriksaan update gagal: ${it.message}") }
         })
+        content.addView(settingRowClickable("Tentang", "GITLS 2.36.0", "information-outline") {
+            AlertDialog.Builder(this).setTitle("GITLS 2.36.0").setMessage("Utility Suite • Web Hosting Wi-Fi • Network • Developer • ESP • Finance • Image • Color\n\nPembaruan ini menambahkan personalisasi tampilan dengan pilihan tema sistem, terang, gelap, dan kontrol animasi UI.").setPositiveButton("OK", null).show()
+        })
+    }
+
+    private fun appDataStorageText(): String = formatBytes(appDataSize())
+
+    private fun appDataSize(): Long {
+        return directorySize(filesDir) + directorySize(cacheDir) + directorySize(codeCacheDir)
+    }
+
+    private fun cacheDirSize(): Long = directorySize(cacheDir) + directorySize(codeCacheDir)
+
+    private fun directorySize(file: File): Long {
+        if (!file.exists()) return 0L
+        if (file.isFile) return file.length()
+        return file.listFiles()?.sumOf { directorySize(it) } ?: 0L
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        if (bytes < 1024) return "$bytes B"
+        val kb = bytes / 1024.0
+        if (kb < 1024) return String.format(Locale.US, "%.1f KB", kb)
+        val mb = kb / 1024.0
+        if (mb < 1024) return String.format(Locale.US, "%.1f MB", mb)
+        return String.format(Locale.US, "%.2f GB", mb / 1024.0)
+    }
+
+    private fun showAppDataStorageDialog() {
+        val data = directorySize(filesDir)
+        val cache = cacheDirSize()
+        val total = data + cache
+        AlertDialog.Builder(this)
+            .setTitle("Penyimpanan Aplikasi")
+            .setMessage("Data aplikasi: ${formatBytes(data)}\nCache: ${formatBytes(cache)}\nTotal: ${formatBytes(total)}\n\nFile kerja di dalam penyimpanan aplikasi tidak akan dihapus dari menu ini.")
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
+    private fun confirmClearAppCache() {
+        val size = cacheDirSize()
+        if (size <= 0L) { toast("Cache sudah kosong"); return }
+        AlertDialog.Builder(this)
+            .setTitle("Bersihkan Cache?")
+            .setMessage("Hapus sekitar ${formatBytes(size)} cache sementara? Pengaturan dan file kerja tetap aman.")
+            .setNegativeButton("Batal", null)
+            .setPositiveButton("Bersihkan") { _, _ ->
+                runCatching {
+                    cacheDir.deleteRecursively()
+                    codeCacheDir.deleteRecursively()
+                    cacheDir.mkdirs()
+                    codeCacheDir.mkdirs()
+                }.onSuccess { toast("Cache dibersihkan"); showSettings() }
+                 .onFailure { toast("Cache gagal dibersihkan: ${it.message}") }
+            }.show()
+    }
+
+    private fun confirmResetPreferences() {
+        AlertDialog.Builder(this)
+            .setTitle("Reset Pengaturan?")
+            .setMessage("Tema, layout Beranda, preferensi tampilan, dan pengaturan lokal akan dikembalikan ke awal. File kerja dan database keuangan tidak dihapus.")
+            .setNegativeButton("Batal", null)
+            .setPositiveButton("Reset") { _, _ ->
+                val keepKeys = setOf("history", "recent_files", "favorite_tools", "home_tools", "latest_tool_updates", "recent_tools", "tool_update_versions")
+                val current = prefs.all
+                val editor = prefs.edit().clear()
+                current.forEach { (key, value) ->
+                    if (key in keepKeys) {
+                        when (value) {
+                            is Boolean -> editor.putBoolean(key, value)
+                            is Int -> editor.putInt(key, value)
+                            is Long -> editor.putLong(key, value)
+                            is Float -> editor.putFloat(key, value)
+                            is String -> editor.putString(key, value)
+                            is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+                        }
+                    }
+                }
+                editor.apply()
+                isDarkTheme = false
+                applySystemTheme()
+                toast("Pengaturan dikembalikan")
+                showSettings()
+            }.show()
     }
 
     private fun settingRowClickable(name: String, desc: String, iconName: String, action: () -> Unit): View {
@@ -2835,7 +3011,7 @@ class MainActivity : Activity() {
 
     private fun showAbout() {
         AlertDialog.Builder(this).setTitle("GITLS ${BuildConfig.VERSION_NAME}").setMessage(
-            "Native Android utility suite.\n\nVersi 2.31 memperbaiki Snap Search (search bar mengecil dan muncul kembali dengan geseran kecil di semua halaman yang punya pencarian). Versi 2.30 mendesain ulang GitHub Publisher (pengaturan, proses upload animasi, dan halaman hasil) serta melengkapi ikon semua tools. Versi 2.28 menambahkan GitHub ZIP Publisher, perbaikan keyboard-safe navigation, dan Snap Search yang lebih responsif. Fitur V2.25 dan V2.26 tetap dipertahankan. Versi 2.23.0 menyatukan Editor dan Web Code Editor menjadi satu workspace kode HTML, CSS, dan JavaScript, memindahkan format JSON/CSV/Base64/XML dan lainnya ke menu (+), serta merapikan mode editor layar penuh agar fokus pada kode."
+            "Native Android utility suite.\n\nVersi 2.32 menambahkan pusat Data & Penyimpanan, backup/restore yang lebih mudah diakses, pembersihan cache, reset preferensi, dan akses pembaruan aplikasi. Versi 2.31 memperbaiki Snap Search (search bar mengecil dan muncul kembali dengan geseran kecil di semua halaman yang punya pencarian). Versi 2.30 mendesain ulang GitHub Publisher (pengaturan, proses upload animasi, dan halaman hasil) serta melengkapi ikon semua tools. Versi 2.28 menambahkan GitHub ZIP Publisher, perbaikan keyboard-safe navigation, dan Snap Search yang lebih responsif. Fitur V2.25 dan V2.26 tetap dipertahankan. Versi 2.23.0 menyatukan Editor dan Web Code Editor menjadi satu workspace kode HTML, CSS, dan JavaScript, memindahkan format JSON/CSV/Base64/XML dan lainnya ke menu (+), serta merapikan mode editor layar penuh agar fokus pada kode."
         ).setPositiveButton("OK", null).show()
     }
 
@@ -5140,7 +5316,7 @@ class MainActivity : Activity() {
             put("format", "mytools-app-backup")
             put("version", 1)
             put("createdAt", System.currentTimeMillis())
-            put("appVersion", "2.25.0")
+            put("appVersion", "2.32.0")
             val settings = JSONObject()
             prefs.all.forEach { (k, v) ->
                 when (v) {
