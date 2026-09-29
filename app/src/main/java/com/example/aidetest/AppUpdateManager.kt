@@ -131,13 +131,13 @@ class AppUpdateManager(private val context: Context) {
         prefs.edit().putLong(LAST_CHECK, now).apply()
 
         thread(name = "gitls-update-check") {
-            runCatching {
+            runCatching<ReleaseInfo?> {
                 val json = JSONObject(String(httpGet(API_BASE + repo + "/releases/latest"), Charsets.UTF_8))
                 val tag = json.optString("tag_name").trim()
-                if (tag.isBlank()) return@runCatching
-                if (compareVersions(tag, BuildConfig.VERSION_NAME) <= 0) return@runCatching
+                if (tag.isBlank()) return@runCatching null
+                if (compareVersions(tag, BuildConfig.VERSION_NAME) <= 0) return@runCatching null
 
-                val assets = json.optJSONArray("assets") ?: return@runCatching
+                val assets = json.optJSONArray("assets") ?: return@runCatching null
                 var apkUrl: String? = null
                 var checksumUrl: String? = null
                 for (i in 0 until assets.length()) {
@@ -147,7 +147,7 @@ class AppUpdateManager(private val context: Context) {
                     if (name.endsWith(".apk", true) && apkUrl == null) apkUrl = url
                     if (name.endsWith(".sha256", true)) checksumUrl = url
                 }
-                val apk = apkUrl ?: return@runCatching
+                val apk = apkUrl ?: return@runCatching null
                 ReleaseInfo(
                     tag = tag,
                     name = json.optString("name", "GITLS $tag"),
@@ -157,8 +157,10 @@ class AppUpdateManager(private val context: Context) {
                     checksumUrl = checksumUrl
                 )
             }.onSuccess { release ->
-                (context as? android.app.Activity)?.runOnUiThread {
-                    showUpdateDialog(release)
+                if (release != null) {
+                    (context as? android.app.Activity)?.runOnUiThread {
+                        showUpdateDialog(release)
+                    }
                 }
             }
         }
