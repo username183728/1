@@ -857,7 +857,9 @@ class MainActivity : Activity() {
         stopLedPlayback()
         server?.close()
         server = null
-        runCatching { hotspotReservation?.close() }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            runCatching { hotspotReservation?.close() }
+        }
         hotspotReservation = null
         super.onDestroy()
     }

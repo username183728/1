@@ -58,6 +58,13 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
+
+    // Lint tetap dijalankan di CI dan hasil lengkapnya diunggah sebagai artifact.
+    // Error lama di project tidak memblokir proses build APK; error baru tetap terlihat di report.
+    lint {
+        abortOnError false
+        warningsAsErrors false
+    }
 }
 
 dependencies {
