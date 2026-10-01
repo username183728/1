@@ -1,0 +1,86 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace "com.example.aidetest"
+
+    buildFeatures {
+        buildConfig true
+    }
+    compileSdkVersion 36
+
+    defaultConfig {
+        applicationId "com.example.aidetest"
+        minSdkVersion 23
+        targetSdkVersion 36
+        def configuredVersionCode = project.hasProperty("versionCode")
+                ? Integer.parseInt(project.property("versionCode").toString())
+                : 64
+        def configuredVersionName = project.hasProperty("versionName")
+                ? project.property("versionName").toString()
+                : "2.43.11"
+
+        versionCode configuredVersionCode
+        versionName configuredVersionName
+
+        def repo = (project.findProperty("githubRepository") ?: "OWNER/REPO").toString().replace("\\", "\\\\").replace("\"", "\\\"")
+        buildConfigField "String", "GITHUB_REPOSITORY", "\"${repo}\""
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        release {
+            def storePath = System.getenv("ANDROID_KEYSTORE_PATH")
+            if (storePath) {
+                storeFile file(storePath)
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // Keep release bytecode intact for maximum runtime stability.
+            // This app uses reflection in a few optional tools; avoiding R8 stripping
+            // prevents release-only crashes that do not appear in debug APKs.
+            minifyEnabled false
+            if (System.getenv("ANDROID_KEYSTORE_PATH")) {
+                signingConfig signingConfigs.release
+            }
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+
+    // Lint tetap dijalankan di CI dan hasil lengkapnya diunggah sebagai artifact.
+    // Error lama di project tidak memblokir proses build APK; error baru tetap terlihat di report.
+    lint {
+        abortOnError false
+        warningsAsErrors false
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation 'androidx.core:core:1.16.0'
+    implementation 'androidx.documentfile:documentfile:1.0.1'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.zxing:core:3.5.3'
+    implementation 'com.google.mlkit:text-recognition:16.0.1'
+    implementation 'androidx.work:work-runtime:2.10.2'
+    implementation 'androidx.core:core-splashscreen:1.0.1'
+
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+}
