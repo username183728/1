@@ -1,0 +1,32 @@
+<resources>
+    <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:colorAccent">#111111</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:statusBarColor">#FFFFFF</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:windowBackground">#FFFFFF</item>
+        <!-- Semua dialog, popup menu, dan dropdown spinner bersudut tumpul -->
+        <item name="android:alertDialogTheme">@style/AppDialogTheme</item>
+        <item name="android:dialogTheme">@style/AppDialogTheme</item>
+        <item name="android:popupMenuStyle">@style/AppPopupMenu</item>
+        <item name="android:spinnerStyle">@style/AppSpinner</item>
+    </style>
+    <style name="AppDialogTheme" parent="Theme.AppCompat.Light.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/bg_dialog_rounded</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:colorAccent">#111111</item>
+    </style>
+    <style name="AppPopupMenu" parent="Widget.AppCompat.Light.PopupMenu">
+        <item name="android:popupBackground">@drawable/bg_popup_rounded</item>
+    </style>
+    <style name="AppSpinner" parent="Widget.AppCompat.Spinner">
+        <item name="android:popupBackground">@drawable/bg_popup_rounded</item>
+    </style>
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#FFFFFF</item>
+<item name="postSplashScreenTheme">@style/AppTheme</item>
+    </style>
+</resources>

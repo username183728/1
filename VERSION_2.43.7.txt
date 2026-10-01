@@ -1,0 +1,8 @@
+GITLS 2.43.7
+Bug fix update
+
+- Transaksi berulang: tidak lagi dibuat ulang setiap hari setelah tanggal jatuh tempo; kini sekali per bulan.
+- Color Picker: MediaProjection callback didaftarkan sebelum membuat virtual display (wajib di Android 14+), kegagalan start tidak lagi menutup aplikasi, service berhenti saat izin tangkap layar dicabut.
+- Splash GitLis: huruf kini tersusun horizontal sehingga kata terbaca utuh, sentuhan tidak tembus ke UI di bawahnya, dan animasi dilewati saat Motion = OFF.
+- Foreground service hapus massal GitHub: aman untuk Android 6 (API 23).
+- Versi: app_name dan dialog Tentang disamakan dengan versionName.

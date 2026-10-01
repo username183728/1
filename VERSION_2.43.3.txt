@@ -1,0 +1,8 @@
+GITLS 2.43.3
+Loading Screen Icon Animation Update
+
+- Replaced the previous geometric splash animation with the supplied hand-drawn cube mark.
+- Added transparent icon asset with the white background removed.
+- Added smooth top-to-bottom ink reveal, micro-settle, subtle particles, and GitLis text fade-in.
+- Preserved Motion Full / Reduced / Off modes and the existing splash lifecycle.
+- No continuous background animation after the splash finishes.
