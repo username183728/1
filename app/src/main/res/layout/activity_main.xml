@@ -1,0 +1,263 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF">
+
+    <LinearLayout
+        android:id="@+id/mainContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="#FFFFFF"
+        android:visibility="visible">
+
+        <LinearLayout
+            android:id="@+id/topBar"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:layout_marginBottom="-60dp"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:gravity="center_vertical"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:background="@android:color/transparent"
+            android:elevation="8dp">
+
+            <ImageButton
+                android:id="@+id/homeMenu"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:background="@android:color/transparent"
+                android:contentDescription="Menu"
+                android:padding="10dp"
+                android:src="@drawable/ic_menu"
+                android:elevation="5dp"
+                android:visibility="visible" />
+
+            <TextView
+                android:id="@+id/btnBack"
+                android:contentDescription="Kembali"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:gravity="center"
+                android:text="‹"
+                android:textColor="#17202A"
+                android:textSize="28sp"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/headerTitleBox"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:paddingStart="10dp"
+                android:paddingEnd="8dp"
+                android:visibility="gone">
+                <TextView
+                    android:id="@+id/tvTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="GITLS"
+                    android:textColor="#17202A"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/tvSubtitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Semua alat dalam satu aplikasi"
+                    android:textColor="#7B8794"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <Space
+                android:id="@+id/searchFill"
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <EditText
+                android:id="@+id/searchBox"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
+                android:layout_marginEnd="4dp"
+                android:background="@drawable/bg_search_light"
+                android:hint="Cari tools, studio, atau proyek..."
+                android:singleLine="true"
+                android:inputType="text"
+                android:imeOptions="actionSearch"
+                android:textColor="#17202A"
+                android:textColorHint="#98A2AD"
+                android:textSize="14sp"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:visibility="gone" />
+
+
+            <ImageButton
+                android:id="@+id/homeSearch"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:background="@android:color/transparent"
+                android:contentDescription="Cari"
+                android:padding="10dp"
+                android:src="@drawable/ic_search_ghost"
+                android:elevation="5dp"
+                android:visibility="visible" />
+
+            <ImageButton
+                android:id="@+id/homeProfile"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:background="@android:color/transparent"
+                android:contentDescription="Profil"
+                android:padding="10dp"
+                android:src="@drawable/ic_person"
+                android:elevation="5dp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/btnAction"
+                android:contentDescription="Aksi dan fitur tambahan"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:gravity="center"
+                android:text="⋮"
+                android:textColor="#17202A"
+                android:textSize="26sp" />
+
+            <TextView
+                android:id="@+id/editorMore"
+                android:contentDescription="Menu Editor"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:gravity="center"
+                android:text="⋮"
+                android:textColor="#17202A"
+                android:textSize="25sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+
+        <ScrollView
+            android:id="@+id/scroll"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:fillViewport="true"
+            android:clipToPadding="false"
+            android:overScrollMode="never">
+            <LinearLayout
+                android:id="@+id/content"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="104dp" />
+        </ScrollView>
+
+        <LinearLayout
+            android:id="@+id/editorBottomBar"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:background="#FFFFFF"
+            android:elevation="6dp"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/bottomNav"
+            android:layout_width="match_parent"
+            android:layout_height="70dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="10dp"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:background="@drawable/bg_bottom_nav"
+            android:elevation="6dp"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp">
+
+            <LinearLayout android:id="@+id/navHome" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center" android:orientation="vertical" android:paddingTop="7dp" android:paddingBottom="4dp">
+                <ImageView android:id="@+id/navHomeIcon" android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_home" android:contentDescription="Beranda" />
+                <TextView android:id="@+id/navHomeLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:text="Beranda" android:textColor="#17202A" android:textSize="10sp" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/navTools" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center" android:orientation="vertical" android:paddingTop="7dp" android:paddingBottom="4dp">
+                <ImageView android:id="@+id/navToolsIcon" android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_grid" android:contentDescription="Tools" />
+                <TextView android:id="@+id/navToolsLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:text="Tools" android:textColor="#8A96A3" android:textSize="10sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/navAdd"
+                android:visibility="gone"
+                android:layout_width="58dp"
+                android:layout_height="58dp"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp"
+                android:gravity="center"
+                android:text="+"
+                android:textColor="#FFFFFF"
+                android:textSize="32sp"
+                android:background="@drawable/bg_bottom_plus"
+                android:elevation="8dp"
+                android:contentDescription="Tambah" />
+
+            <LinearLayout android:id="@+id/navFavorite" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center" android:orientation="vertical" android:paddingTop="7dp" android:paddingBottom="4dp">
+                <ImageView android:id="@+id/navFavoriteIcon" android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_star" android:contentDescription="Favorit" />
+                <TextView android:id="@+id/navFavoriteLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:text="Favorit" android:textColor="#8A96A3" android:textSize="10sp" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/navSettings" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center" android:orientation="vertical" android:paddingTop="7dp" android:paddingBottom="4dp">
+                <ImageView android:id="@+id/navSettingsIcon" android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_settings" android:contentDescription="Pengaturan" />
+                <TextView android:id="@+id/navSettingsLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:text="Pengaturan" android:textColor="#8A96A3" android:textSize="10sp" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/loginScreen"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="#0A0A0B"
+        android:visibility="gone"
+        android:paddingStart="28dp"
+        android:paddingEnd="28dp"
+        android:paddingTop="24dp"
+        android:paddingBottom="36dp">
+        <View android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1.3" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center">
+            <TextView android:layout_width="56dp" android:layout_height="56dp" android:background="@drawable/bg_logo_circle" android:gravity="center" android:text="M" android:textColor="#F5F5F7" android:textSize="22sp" android:textStyle="bold" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:letterSpacing="0.22" android:text="GITLS" android:textColor="#F5F5F7" android:textSize="24sp" android:textStyle="bold" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:letterSpacing="0.28" android:text="PREMIUM EXPERIENCE" android:textColor="#8A8A90" android:textSize="10sp" />
+        </LinearLayout>
+        <View android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1.7" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+            <Button android:id="@+id/btnMasuk" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginBottom="12dp" android:background="@drawable/bg_btn_white" android:letterSpacing="0.1" android:text="MASUK" android:textAllCaps="true" android:textColor="#0A0A0B" android:textStyle="bold" android:elevation="0dp" android:stateListAnimator="@null" />
+            <Button android:id="@+id/btnDaftar" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginBottom="16dp" android:background="@drawable/bg_btn_outline" android:letterSpacing="0.1" android:text="DAFTAR" android:textAllCaps="true" android:textColor="#F5F5F7" android:elevation="0dp" android:stateListAnimator="@null" />
+            <TextView android:id="@+id/tvLanjut" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:letterSpacing="0.08" android:text="LANJUT TANPA AKUN" android:textColor="#8A8A90" android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>
