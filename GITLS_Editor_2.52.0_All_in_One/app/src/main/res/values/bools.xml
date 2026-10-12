@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Quick Settings TileService exists only on API 24+. -->
+    <bool name="gitls_quick_tile_enabled">false</bool>
+</resources>

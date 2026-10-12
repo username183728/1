@@ -1,0 +1,8 @@
+<resources>
+    <color name="mt_bg">#0A0A0B</color>
+    <color name="mt_surface">#161618</color>
+    <color name="mt_surface_alt">#1C1C1F</color>
+    <color name="mt_text">#F5F5F7</color>
+    <color name="mt_text_muted">#A6A6AE</color>
+    <color name="mt_line">#35353A</color>
+</resources>

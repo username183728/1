@@ -1,0 +1,27 @@
+<resources>
+    <!-- GITLS minimal modern design system -->
+    <color name="colorPrimary">#111114</color>
+    <color name="colorPrimaryDark">#000000</color>
+    <color name="colorAccent">#111114</color>
+    <color name="mt_bg_light">#FAFAFC</color>
+    <color name="mt_surface_light">#FFFFFF</color>
+    <color name="mt_surface_alt_light">#F4F5F8</color>
+    <color name="mt_text_light">#111114</color>
+    <color name="mt_text_muted_light">#6E727C</color>
+    <color name="mt_line_light">#E4E6EB</color>
+    <color name="mt_bg_dark">#08080A</color>
+    <color name="mt_surface_dark">#121216</color>
+    <color name="mt_surface_alt_dark">#1A1A1E</color>
+    <color name="mt_text_dark">#F6F6F8</color>
+    <color name="mt_text_muted_dark">#94969E</color>
+    <color name="mt_line_dark">#2A2A30</color>
+    <color name="ic_bg">#08080A</color>
+
+    <!-- Runtime theme aliases -->
+    <color name="mt_bg">#FAFAFC</color>
+    <color name="mt_surface">#FFFFFF</color>
+    <color name="mt_surface_alt">#F4F5F8</color>
+    <color name="mt_text">#111114</color>
+    <color name="mt_text_muted">#6E727C</color>
+    <color name="mt_line">#E4E6EB</color>
+</resources>

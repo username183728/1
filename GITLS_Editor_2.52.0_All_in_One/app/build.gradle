@@ -1,0 +1,139 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace "com.example.aidetest"
+
+    buildFeatures {
+        buildConfig true
+    }
+    compileSdkVersion 36
+
+    defaultConfig {
+        // Public applicationId for Play Store / distribution.
+        // Internal Kotlin package remains com.example.aidetest for this build
+        // to avoid a massive rename; change namespace + all package declarations later.
+        applicationId "com.gitls.app"
+        minSdkVersion 24  // 24: ML Kit Subject Segmentation (AI hapus latar) mensyaratkan API 24
+        targetSdkVersion 36
+        def configuredVersionCode = project.hasProperty("versionCode")
+                ? Integer.parseInt(project.property("versionCode").toString())
+                : 142
+        def configuredVersionName = project.hasProperty("versionName")
+                ? project.property("versionName").toString()
+                : "2.52.0"
+
+        versionCode configuredVersionCode
+        versionName configuredVersionName
+
+        // APK terpisah "Studio Kreatif" (editor foto & desain saja): ./gradlew assembleDebug -PstudioApp=true
+        // Kode sama, applicationId berbeda (bisa dipasang berdampingan dengan GITLS), langsung membuka studio.
+        def studioApp = project.hasProperty("studioApp") && project.property("studioApp").toString() == "true"
+        if (studioApp) {
+            applicationId "com.gitls.studio"
+        }
+        buildConfigField "boolean", "STUDIO_ONLY", studioApp ? "true" : "false"
+        manifestPlaceholders = [
+                appLabel         : studioApp ? "Studio Kreatif" : "@string/app_name",
+                quickTileEnabled : studioApp ? "false" : "@bool/gitls_quick_tile_enabled",
+                widgetEnabled    : studioApp ? "false" : "true"
+        ]
+
+        def repo = (project.findProperty("githubRepository") ?: "OWNER/REPO").toString().replace("\\", "\\\\").replace("\"", "\\\"")
+        buildConfigField "String", "GITHUB_REPOSITORY", "\"${repo}\""
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // Release signing is intentionally external to source control.
+    // Provide ANDROID_KEYSTORE_PATH + ANDROID_KEYSTORE_PASSWORD +
+    // ANDROID_KEY_ALIAS + ANDROID_KEY_PASSWORD in CI/local secure env.
+    def releaseStorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+    def releaseStorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+    def releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
+    def releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+    def releaseSigningConfigured = releaseStorePath && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
+
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            release {
+                storeFile file(releaseStorePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            // Use the standard Android debug keystore. Never reuse release signing identity.
+        }
+        release {
+            // R8 aktif untuk menghapus bytecode/resource yang benar-benar tidak digunakan.
+            // Jangan blanket-keep seluruh package aplikasi: fitur tetap dilindungi oleh
+            // referensi kode/manifest dan aturan minimum di proguard-rules.pro.
+            // SourceFile/LineNumberTable tetap dipertahankan agar stack trace release terbaca.
+            minifyEnabled true
+            shrinkResources true
+            // A release build is unsigned unless secure CI/local signing variables are supplied.
+            // This prevents accidental signing with a bundled/private source key.
+            if (releaseSigningConfigured) {
+                signingConfig signingConfigs.release
+            }
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        // Keep Java and Kotlin bytecode targets aligned with the JDK used by AGP 8.x.
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // Lint adalah gate wajib untuk mencegah regresi yang dapat mengganggu pengguna.
+    lint {
+        abortOnError true
+        warningsAsErrors false
+        checkReleaseBuilds true
+    }
+}
+
+// Configure Kotlin at the project extension level. This is the supported
+// Kotlin 2.2+ DSL and avoids the removed/deprecated android.kotlinOptions DSL.
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget("17")
+    }
+}
+
+// Keep Java compilation deterministic across GitHub Actions and local IDEs.
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation 'androidx.core:core:1.16.0'
+    implementation 'androidx.documentfile:documentfile:1.0.1'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.zxing:core:3.5.3'
+    implementation 'com.google.mlkit:text-recognition:16.0.1'
+    implementation 'androidx.work:work-runtime:2.10.2'
+    implementation 'androidx.core:core-splashscreen:1.0.1'
+    implementation 'com.airbnb.android:lottie:6.6.7'
+    // Video Editor: render penuh (encoding ulang) — filter, kecepatan, transisi, teks, crop, foto, musik.
+    implementation 'androidx.media3:media3-transformer:1.4.1'
+    implementation 'androidx.media3:media3-effect:1.4.1'
+    implementation 'androidx.media3:media3-common:1.4.1'
+    // Background Remover / Photo Editor: segmentasi AI on-device (model nyata, bukan label).
+    //  - Subject Segmentation: orang, hewan, produk (model via Google Play Services, unduh otomatis)
+    //  - Selfie Segmentation: orang, model dibundel di APK (berfungsi offline)
+    implementation 'com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1'
+    implementation 'com.google.mlkit:segmentation-selfie:16.0.0-beta6'
+
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+}
