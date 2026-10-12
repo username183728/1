@@ -35,7 +35,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /*
- * Studio Kreatif — Photo Editor + Design Studio + Hapus Latar dalam satu dokumen berlapis.
+ * Foto Studio — Photo Editor + Design Studio + Hapus Latar dalam satu dokumen berlapis.
  *
  *  - CreativeStudio.kt (file ini): pintu masuk tool + alias id lama, state proyek, template,
  *    penyimpanan proyek/mask, render layer ke Canvas, dan ekspor SVG.
@@ -48,19 +48,22 @@ import kotlin.math.roundToInt
  *  - CsFocusEditor.kt: tampilan fokus layar penuh untuk Potong, Heal, dan Kuas mask.
  */
 
-internal const val CREATIVE_STUDIO_PAGE = "Studio Kreatif"
+internal const val CREATIVE_STUDIO_PAGE = "Foto Studio"
 internal const val CS_PICK_IMAGE = 1220
 internal const val CS_UNDO_LIMIT = 40
 /** Salinan sumber privat ≤ 3072 px: cukup untuk ekspor resolusi penuh (batas ekspor Photo Editor lama). */
 internal const val CS_SOURCE_MAX = 3072
 
-internal fun MainActivity.creativeStudioTool(entry: CsToolIds.Entry = CsToolIds.Entry.DEFAULT) {
+internal fun MainActivity.creativeStudioTool(entry: CsToolIds.Entry = CsToolIds.Entry.DEFAULT, restore: Boolean = false) {
     clearPage(CREATIVE_STUDIO_PAGE)
     // Kanvas memakai seluruh layar: top bar aplikasi diganti top bar studio sendiri.
     topBarVisibility(false)
     content.setPadding(0, 0, 0, 0)
-    val ui = CreativeStudioUi(this, entry)
-    content.addView(ui.root, LinearLayout.LayoutParams(-1, 0, 1f))
+    // Foto Studio = Desain + Animasi dalam satu halaman. Mode terakhir hanya dipulihkan saat restore back-stack.
+    if (entry == CsToolIds.Entry.ANIM) FotoStudioState.mode = FotoStudioState.ANIMASI
+    else if (!restore) FotoStudioState.mode = FotoStudioState.DESAIN
+    val host = FotoStudioHost(this, entry)
+    content.addView(host.root, LinearLayout.LayoutParams(-1, 0, 1f))
 }
 
 // Id/halaman lama tetap berfungsi (openTool, pemulihan back-stack, sesi ganti tema).

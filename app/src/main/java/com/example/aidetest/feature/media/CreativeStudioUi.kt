@@ -52,7 +52,7 @@ private class CsMaxScroll(ctx: Context) : ScrollView(ctx) {
 }
 
 /**
- * Studio Kreatif — satu editor berlapis untuk desain, edit foto, dan hapus latar (hitam-putih):
+ * Foto Studio — satu editor berlapis untuk desain, edit foto, dan hapus latar (hitam-putih):
  *  - Kanvas: preset & ukuran kustom, rasio, orientasi, latar solid/gradien/transparan, zoom & geser 2 jari
  *  - Panduan pintar: tengah/tepi kanvas & objek lain + magnet, titik pusat, grid; Pusat sekali ketuk,
  *    rata & distribusi, rotasi (snap 45°), multi-pilih (tekan lama), grup, kunci, sembunyikan
@@ -186,7 +186,7 @@ internal class CreativeStudioUi(private val a: MainActivity, private val entry: 
         when (entry) {
             CsToolIds.Entry.PHOTO -> showStartCard(cutout = false)
             CsToolIds.Entry.CUTOUT -> showStartCard(cutout = true)
-            CsToolIds.Entry.DEFAULT -> Unit
+            CsToolIds.Entry.DEFAULT, CsToolIds.Entry.ANIM -> Unit
         }
     }
 
@@ -2104,7 +2104,7 @@ internal class CreativeStudioUi(private val a: MainActivity, private val entry: 
             row.addView(kit.icon("chevron-right", 18f, c.muted), LinearLayout.LayoutParams(dp(24), dp(24)))
             panelBody.addView(row, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(6) })
         }
-        send("Ke Animation Studio", "motion-play-outline") { autosaveNow(); StudioHandoff.toAnimation(a, p.doc(), p.projectName) }
+        send("Ke Animasi", "motion-play-outline") { autosaveNow(); StudioHandoff.toAnimation(a, p.doc(), p.projectName) }
         send("Ke Presentasi (slide baru)", "presentation") { autosaveNow(); StudioHandoff.toPresentation(a, p.doc()) }
         send("Ke Video Editor (klip gambar PNG)", "movie-open-plus-outline") {
             StudioHandoff.designToVideoEditor(a, p.doc()) { on -> if (alive) busy(on, "Merender PNG untuk Video Editor…") }

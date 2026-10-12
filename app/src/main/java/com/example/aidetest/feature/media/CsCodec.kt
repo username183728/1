@@ -3,7 +3,7 @@ package com.example.aidetest
 import java.util.UUID
 
 /**
- * Codec proyek Studio Kreatif (format v3) di atas pohon Map/List murni. org.json hanya dipakai
+ * Codec proyek Foto Studio (format v3) di atas pohon Map/List murni. org.json hanya dipakai
  * di lapisan Android (CsStore) untuk mengubah teks JSON ↔ pohon, sehingga seluruh aturan
  * format + migrasi bisa diuji di JVM (CsCodecTest).
  *

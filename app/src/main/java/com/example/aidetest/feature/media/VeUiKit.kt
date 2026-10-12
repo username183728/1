@@ -16,7 +16,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 
 /**
- * Komponen UI Video Editor — sistem desain yang sama dengan Studio Kreatif & Audio Editor
+ * Komponen UI Video Editor — sistem desain yang sama dengan Foto Studio & Audio Editor
  * ([EditorChrome]/[ImgKit]): top bar 52 dp, panel & dock monokrom yang ikut tema terang/gelap,
  * sasaran sentuh ≥ 44 dp. Area kerja video (pratinjau, transport, timeline) tetap gelap di kedua tema
  * agar warna video dan thumbnail terbaca akurat — token `ws*`.
@@ -91,7 +91,7 @@ internal class VeUiKit(val a: MainActivity) {
 
     fun hline(): View = View(a).apply { setBackgroundColor(stroke) }
 
-    /** Sel alat di dock bawah — sama dengan dock Studio Kreatif: ikon 21 di atas label 10, aktif = terisi. */
+    /** Sel alat di dock bawah — sama dengan dock Foto Studio: ikon 21 di atas label 10, aktif = terisi. */
     fun tile(iconName: String, label: String, enabled: Boolean = true, selected: Boolean = false, onClick: () -> Unit): LinearLayout =
         LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
@@ -174,7 +174,7 @@ internal class VeUiKit(val a: MainActivity) {
     }
 
     /**
-     * Slider satu baris (sama dengan Studio Kreatif/Audio Editor): label · bar · nilai.
+     * Slider satu baris (sama dengan Foto Studio/Audio Editor): label · bar · nilai.
      * Ketuk nilai untuk kembali ke [default] (bila ada). [onStart] sekali saat disentuh (undo),
      * [onChange] tiap perubahan oleh pengguna, [onEnd] saat dilepas (simpan).
      */

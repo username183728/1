@@ -10,7 +10,7 @@ import android.graphics.drawable.RippleDrawable
  * Palet monokrom + drawable bersama untuk tampilan bergaya editor profesional
  * (Workspace Beranda, Laci Tools, Laci Editor).
  *
- * Pedoman tata letak editor layar penuh (Studio Kreatif, Video Editor, Audio Editor, Auto Trace):
+ * Pedoman tata letak editor layar penuh (Foto Studio, Video Editor, Audio Editor, Auto Trace):
  *  - Top bar 52 dp: kembali (arrow-left 23, sel 44×44) · judul 15 tebal + subjudul 11 · aksi ikon
  *    (sel 40×44) · menu ⋮ · tombol utama terisi (tinggi 36, radius 18).
  *  - Dock bawah: sel 66×54, ikon 21 di atas label 10, aktif = terisi [activeFill]; garis 1 px di atasnya.

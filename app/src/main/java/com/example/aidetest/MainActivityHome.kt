@@ -165,8 +165,8 @@ internal fun MainActivity.showHome(filter: String = homeFilter) {
             HomeCategory("NETWORK", "", "web", listOf(
                 "dns", "dohdns", "rdns", "port", "publicip", "ping", "ipinfo", "ipintelligence", "ssl", "http", "httpheaders", "restclient", "websocket", "network", "networkcenter", "wifi", "webhostwifi", "whois", "traceroute", "subnetcalc", "netscanner"
             )),
-            HomeCategory("MEDIA & COLOR", "12 tools", "palette-outline", listOf(
-                "color", "imagestudio", "creativestudio", "animationstudio", "presentationstudio", "videoeditor", "audioeditor", "imagecompress", "imageconvert", "autotrace", "batchconvert", "videotoaudio"
+            HomeCategory("MEDIA & COLOR", "13 tools", "palette-outline", listOf(
+                "color", "imagestudio", "creativestudio", "presentationstudio", "videoeditor", "audioeditor", "imagecompress", "imageconvert", "autotrace", "batchconvert", "videotoaudio", "videoframes"
             )),
             HomeCategory("QR / OCR", "", "qrcode", listOf("qr", "ocr")),
             HomeCategory("FINANCE", "", "bank-outline", listOf("financereader", "financedashboard", "dcacalc", "compoundcalc", "margincalc", "discountcalc", "pphcalc", "riskcalc")),
@@ -195,7 +195,7 @@ internal fun MainActivity.showHome(filter: String = homeFilter) {
             Triple("File Studio", "folder-outline", "filestudio"),
             Triple("Image Studio", "image-outline", "imagestudio"),
             Triple("Editing Studio", "movie-edit-outline", "editingstudio"),
-            Triple("Studio Kreatif", "palette-outline", "creativestudio"),
+            Triple("Foto Studio", "palette-outline", "creativestudio"),
             Triple("Finance Studio", "bank-outline", "financestudio"),
             Triple("System Studio", "cog-outline", "systemstudio"),
             Triple("Utility Studio", "toolbox-outline", "utilitystudio")
@@ -629,7 +629,7 @@ internal fun MainActivity.showAllStudios() {
             Triple("File Studio", "folder-outline", "filestudio"),
             Triple("Image Studio", "image-outline", "imagestudio"),
             Triple("Editing Studio", "movie-edit-outline", "editingstudio"),
-            Triple("Studio Kreatif", "palette-outline", "creativestudio"),
+            Triple("Foto Studio", "palette-outline", "creativestudio"),
             Triple("Finance Studio", "bank-outline", "financestudio"),
             Triple("System Studio", "cog-outline", "systemstudio"),
             Triple("Utility Studio", "toolbox-outline", "utilitystudio")
@@ -706,7 +706,7 @@ internal fun MainActivity.toolCategory(id: String): String {
             id in setOf("editor", "json", "jsonformat", "base64", "url", "regex", "uuid", "textstat", "case", "compare", "slug", "random", "hex", "base32", "timestamp", "unicode", "urlparser", "mime", "uuidbatch", "base64file", "textreplace", "wordfreq", "markdown", "sql", "yaml", "toml", "cron") || n.contains("text") || n.contains("json") || n.contains("xml") || n.contains("regex") || n.contains("base64") || n.contains("unicode") || n.contains("slug") -> "Developer"
             id in setOf("number", "basiccalc", "scicalc", "percentcalc", "fractioncalc", "ratiocalc", "unitcalc", "areacalc", "volumecalc", "speedcalc", "timecalc", "datecalc", "loancalc", "fuelcalc", "pivotcalc", "dividercalc", "dcacalc", "pwmcalc", "spritecalc", "installcalc", "powercalc", "aspectcalc", "pphcalc", "riskcalc", "compoundcalc", "margincalc", "discountcalc", "datacalc", "pressurecalc", "worktimecalc", "basecalc", "equationcalc") || n.contains("calc") || n.contains("kalkulator") || n.contains("converter") || n.contains("konversi") || n.contains("aspect") -> "Calculator"
             id in setOf("devicecenter", "deviceinfo", "battery", "apps", "storage", "clipboard") || n.contains("device") || n.contains("battery") || n.contains("baterai") -> "System"
-            id in setOf("color", "imagestudio", "ocr", "qr", "colorstudio", "videotoaudio", "editingstudio", "creativestudio", "animationstudio", "presentationstudio", "photoeditor", "videoeditor", "audioeditor", "designstudio", "bgremover", "imagecompress", "imageconvert", "autotrace", "batchconvert") -> "Media"
+            id in setOf("color", "imagestudio", "ocr", "qr", "colorstudio", "videotoaudio", "videoframes", "editingstudio", "creativestudio", "presentationstudio", "photoeditor", "videoeditor", "audioeditor", "designstudio", "bgremover", "imagecompress", "imageconvert", "autotrace", "batchconvert") -> "Media"
             else -> "Utility"
         }
     }
@@ -1019,8 +1019,7 @@ internal fun MainActivity.setupBitFace() {
         navBot.setOnTouchListener(null)
         navBot.setOnLongClickListener(null)
         navBot.setOnClickListener {
-            // Mode Studio-only (-PstudioApp=true): tombol tengah membuka Studio Kreatif, bukan Bit Room.
-            if (EDITING_EDITION_LOCK) openTool("creativestudio") else showBitRoomFromNav(reveal = true)
+            showBitRoomFromNav(reveal = true)
         }
         addPressFeedback(navBot)
 
@@ -1035,8 +1034,6 @@ internal fun MainActivity.setupBitFace() {
  * The room is local/offline and does not contain the old AI/chat UI.
  */
 internal fun MainActivity.showBitRoomFromNav(reveal: Boolean = true) {
-    // Mode Studio-only: Bit Room (pet virtual) tidak boleh terjangkau; arahkan ke Studio Kreatif.
-    if (EDITING_EDITION_LOCK) { openTool("creativestudio"); return }
     if (currentPage == "Bit Room") return
 
     clearPage("Bit Room", true)
@@ -1393,7 +1390,7 @@ internal fun MainActivity.showBitCompanionMenu() {
             toast(r.message)
         }))
     }
-    if (!EDITING_EDITION_LOCK) rows.add(Triple("rocket-launch-outline", "Mini-game", { BitMiniGames.showPicker(this) }))
+    rows.add(Triple("rocket-launch-outline", "Mini-game", { BitMiniGames.showPicker(this) }))
     rows.add(Triple("chart-line", "Perkembangan", {
         val n = BitPetSystem.snapshot()
         AlertDialog.Builder(this)
@@ -2006,10 +2003,3 @@ internal fun MainActivity.playBitThinking() {
 internal fun MainActivity.startBitAutonomousLoop() {
     bitAnim?.playIdleAll()
 }
-
-/**
- * Warisan 2.50.1 P0 ("Editing Edition"): dulu konstanta `true` yang mengunci seluruh aplikasi ke 3 tool.
- * Di 2.52.0 kunci itu hanya aktif pada APK terpisah Studio Kreatif (`-PstudioApp=true`, BuildConfig.STUDIO_ONLY);
- * build GITLS penuh tidak terkunci sehingga semua tool 2.51.0 tetap terjangkau.
- */
-internal val EDITING_EDITION_LOCK: Boolean get() = BuildConfig.STUDIO_ONLY

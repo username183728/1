@@ -93,10 +93,10 @@ import com.airbnb.lottie.LottieListener
 
 
 internal fun MainActivity.toolHelp(id: String, name: String = homeToolMap[id] ?: id): ToolHelp {
-        // Id lama (photoeditor / designstudio / bgremover) → Studio Kreatif.
+        // Id lama (photoeditor / designstudio / bgremover) → Foto Studio.
         return when (CsToolIds.canonical(id)) {
             CsToolIds.ID -> ToolHelp(
-                "Satu studio berlapis untuk foto, desain, dan hapus latar: Atur cahaya/warna, kurva & HSL, filter, detail, potong/putar/luruskan/perspektif, heal, hapus latar AI + kuas + tepi + latar pengganti + bayangan; teks, bentuk, stiker, layer, panduan tengah & snap, rata & distribusi, undo/redo, proyek, ekspor PNG/JPG/WebP/PDF/SVG.",
+                "Satu studio berlapis untuk foto, desain, animasi (tab Animasi: keyframe, preset, ekspor MP4/GIF), dan hapus latar: Atur cahaya/warna, kurva & HSL, filter, detail, potong/putar/luruskan/perspektif, heal, hapus latar AI + kuas + tepi + latar pengganti + bayangan; teks, bentuk, stiker, layer, panduan tengah & snap, rata & distribusi, undo/redo, proyek, ekspor PNG/JPG/WebP/PDF/SVG.",
                 "Saat mengedit foto, membuat thumbnail/poster/banner, atau butuh foto produk berlatar transparan.",
                 "Foto › Edit foto (atau Hapus latar) → pilih layer → Atur/Hapus latar → tambah teks → Ekspor."
             )
@@ -108,8 +108,8 @@ internal fun MainActivity.toolHelp(id: String, name: String = homeToolMap[id] ?:
             "fileconvert" -> ToolHelp("Mengonversi file antar format yang didukung.", "Saat format file perlu disesuaikan dengan aplikasi lain.", "Konversi gambar (PNG/JPG/WEBP/BMP) atau kompres satu file ke GZ. Audio, video→audio, dan ZIP dibuka di tool masing-masing.")
             "videotoaudio" -> ToolHelp("Ekstrak audio dari video (MP4/MKV/WebM) menjadi file M4A.", "Saat hanya butuh suara dari video, tanpa gambar.", "Pilih video → Ekstrak Audio → dapatkan file M4A yang bisa diputar seperti MP3.")
             "photoeditor" -> ToolHelp("Editor foto non-destruktif: exposure, kontras, highlight/shadow, suhu/tint, saturasi/vibrance, kurva & HSL, filter dengan intensitas, sharpen/denoise/vignette/grain/blur, blur latar AI, crop/rasio/putar/flip/luruskan/perspektif, heal, layer teks/stiker/gambar, bandingkan sebelum-sesudah, ekspor JPG/PNG/WebP + ukuran kustom.", "Saat ingin mengedit foto secara profesional sebelum dibagikan atau diunggah.", "Pilih foto → atur di tab bawah (Atur, Kurva, Filter, Detail, Potong, Heal, Layer) → Ekspor.")
-            "animationstudio" -> ToolHelp("Animasikan desain Studio Kreatif atau foto: keyframe per layer untuk posisi, putar, skala, dan opasitas dengan easing (linear, ease-in, ease-out, ease-in-out); timeline dengan playhead, putar/jeda 30 fps, durasi 1–60 detik, preset (fade, geser masuk, pop, zoom, putar), undo/redo, simpan otomatis, ekspor MP4 (H.264) atau GIF, dan kirim ke Video Editor.", "Saat ingin membuat konten gerak pendek dari desain: intro, story, banner beranimasi, atau GIF.", "Studio Kreatif › Ekspor › Ke Animation Studio → pilih layer → Preset atau seret objek di playhead → Ekspor MP4/GIF.")
-            "presentationstudio" -> ToolHelp("Buat presentasi: tiap slide adalah kanvas Studio Kreatif (teks, bentuk, foto, stiker). Tambah/duplikat/hapus/urutkan slide, ukuran 16:9, 4:3, 9:16, transisi per slide (fade/geser), animasi masuk per objek, mode presentasi layar penuh, simpan/buka proyek, ekspor PDF dan MP4 slideshow.", "Saat menyiapkan materi presentasi, pitch, atau slideshow video dari desain.", "Tambah slide (kosong atau dari Studio Kreatif) → edit objek → atur transisi & animasi → Tampilkan atau Ekspor PDF/MP4.")
+            "presentationstudio" -> ToolHelp("Buat presentasi: tiap slide adalah kanvas Foto Studio (teks, bentuk, foto, stiker). Tambah/duplikat/hapus/urutkan slide, ukuran 16:9, 4:3, 9:16, transisi per slide (fade/geser), animasi masuk per objek, mode presentasi layar penuh, simpan/buka proyek, ekspor PDF dan MP4 slideshow.", "Saat menyiapkan materi presentasi, pitch, atau slideshow video dari desain.", "Tambah slide (kosong atau dari Foto Studio) → edit objek → atur transisi & animasi → Tampilkan atau Ekspor PDF/MP4.")
+            "videoframes" -> ToolHelp("Ekstrak frame video menjadi PNG/JPG dan simpan sebagai ZIP, dengan pratinjau dan estimasi jumlah foto sebelum ekstraksi.", "Saat butuh gambar diam dari video: thumbnail, bahan animasi, dataset, atau dokumentasi.", "Pilih video → atur rentang & mode (Jumlah/FPS/Interval/Semua/Custom) → cek estimasi & pratinjau → Ekstrak ke ZIP.")
             "videoeditor" -> ToolHelp("Editor video mode potret: timeline multi-track dengan playhead di tengah, trim lewat gagang, teks/keterangan/stiker yang bisa diseret di pratinjau, musik & rekam suara, efek, filter, transisi, auto-cut (hapus hening/bagi adegan), sampul, dan ekspor MP4 ke Galeri.", "Saat ingin memotong, menyusun, dan mempercantik video pendek seperti di editor video seluler.", "Tambah media → potong & susun di timeline → tambah teks, audio, efek → Ekspor (Movies/GITLS).")
             "audioeditor" -> ToolHelp("Editor audio: waveform + zoom, playhead, pilih rentang, trim, split, fade, gain, gabung, mix, rekam, undo/redo, ekspor WAV/M4A (AAC).", "Saat ingin memotong, merapikan, atau menggabungkan audio.", "Impor audio/video → tekan lama untuk memilih rentang → edit → Ekspor.")
             "designstudio" -> ToolHelp("Kanvas desain presisi: panduan tengah otomatis + magnet, Pusatkan sekali ketuk, rata & distribusi, rotasi, layer, grup, tipografi, proyek tersimpan, ekspor PNG/JPEG/PDF/SVG.", "Saat membuat thumbnail, poster, logo, atau banner.", "Pilih template → tambah teks/bentuk → Pusat → Ekspor.")
@@ -320,10 +320,10 @@ internal fun MainActivity.iconFor(id: String): String = when (CsToolIds.canonica
         "qr" -> "qrcode"
         "fileconvert" -> "swap-horizontal"
         "videotoaudio" -> "movie-open-outline"
+        "videoframes" -> "filmstrip"
         "videoeditor" -> "movie-edit-outline"
         "audioeditor" -> "microphone"
         "creativestudio" -> "palette-outline"
-        "animationstudio" -> "motion-play-outline"
         "presentationstudio" -> "presentation-play"
         "batchconvert" -> "swap-horizontal"
         "editingstudio" -> "movie-edit-outline"
@@ -1389,7 +1389,7 @@ internal fun MainActivity.themedDialog(): AlertDialog.Builder {
 }
 
 internal fun MainActivity.openTool(requestedId: String) {
-        // Id lama Photo Editor / Design Studio / Background Remover → Studio Kreatif + aksi awalnya.
+        // Id lama Photo Editor / Design Studio / Background Remover → Foto Studio + aksi awalnya.
         val studioEntry = CsToolIds.entryFor(requestedId)
         val id = CsToolIds.canonical(requestedId)
         // Catat tool terakhir yang dibuka (setelah halaman selesai dibangun) untuk pemulihan sesi.
@@ -1525,6 +1525,7 @@ internal fun MainActivity.openTool(requestedId: String) {
             "utilitystudio" -> utilityStudioTool()
             "editingstudio" -> editingStudioTool()
             "videotoaudio" -> videoToAudioTool()
+            "videoframes" -> videoFramesTool()
             "videoeditor" -> videoEditorTool()
             "audioeditor" -> audioEditorTool()
             CsToolIds.ID -> creativeStudioTool(studioEntry)
@@ -1563,17 +1564,17 @@ private val TOOL_RELATED_BINDINGS: Map<String, List<String>> = mapOf(
     "recentfiles" to listOf("filemanager", "filesearch", "backuprestore"),
     "filesearch" to listOf("filemanager", "largefilefinder", "duplicatefinder", "dedupe"),
     "zip" to listOf("filemanager", "fileconvert", "githubzip", "backuprestore"),
-    "videotoaudio" to listOf("fileconvert", "filestudio", "editingstudio", "videoeditor"),
-    "videoeditor" to listOf("videotoaudio", "editingstudio", "creativestudio", "imagestudio", "audioeditor"),
+    "videotoaudio" to listOf("videoframes", "fileconvert", "filestudio", "editingstudio", "videoeditor"),
+    "videoframes" to listOf("videoeditor", "videotoaudio", "editingstudio", "imageconvert", "zip"),
+    "videoeditor" to listOf("videotoaudio", "videoframes", "editingstudio", "creativestudio", "imagestudio", "audioeditor"),
     "audioeditor" to listOf("videotoaudio", "videoeditor", "editingstudio"),
-    "creativestudio" to listOf("animationstudio", "presentationstudio", "imagecompress", "imageconvert", "autotrace", "imagestudio", "color"),
-    "animationstudio" to listOf("creativestudio", "presentationstudio", "videoeditor"),
-    "presentationstudio" to listOf("creativestudio", "animationstudio", "videoeditor"),
+    "creativestudio" to listOf("presentationstudio", "imagecompress", "imageconvert", "autotrace", "imagestudio", "color"),
+    "presentationstudio" to listOf("creativestudio", "videoeditor"),
     "batchconvert" to listOf("fileconvert", "imageconvert", "imagecompress", "videotoaudio", "audioeditor"),
     "imagecompress" to listOf("creativestudio", "imageconvert", "imagestudio"),
     "imageconvert" to listOf("creativestudio", "imagecompress", "fileconvert", "autotrace"),
     "autotrace" to listOf("creativestudio", "imageconvert", "imagestudio", "batchconvert"),
-    "editingstudio" to listOf("editor", "videotoaudio", "fileconvert", "webeditor"),
+    "editingstudio" to listOf("editor", "videotoaudio", "videoframes", "fileconvert", "webeditor"),
     "githubzip" to listOf("filemanager", "zip", "backuprestore", "securitycenter"),
     "backuprestore" to listOf("filemanager", "zip", "securenotes", "financedashboard"),
     "editor" to listOf("json", "jsonformat", "regex", "textreplace", "markdown"),

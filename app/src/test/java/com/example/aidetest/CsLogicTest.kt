@@ -22,6 +22,8 @@ class CsLogicTest {
         assertEquals(CsToolIds.Entry.CUTOUT, CsToolIds.entryFor("bgremover"))
         assertEquals(CsToolIds.Entry.DEFAULT, CsToolIds.entryFor("designstudio"))
         assertEquals(CsToolIds.Entry.DEFAULT, CsToolIds.entryFor("creativestudio"))
+        assertEquals(CsToolIds.Entry.ANIM, CsToolIds.entryFor("animationstudio"))
+        assertEquals(CsToolIds.ID, CsToolIds.canonical("animationstudio"))
     }
 
     @Test

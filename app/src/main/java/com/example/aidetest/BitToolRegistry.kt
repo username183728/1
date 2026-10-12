@@ -17,14 +17,15 @@ object BitToolRegistry {
         "apk" to listOf("apk inspector", "inspect apk", "lihat apk"),
         "apkanalyzer" to listOf("apk analyzer", "analisis apk", "analyze apk"),
         "fileconvert" to listOf("convert file", "konversi file", "ubah format file"),
+        "videoframes" to listOf("video to frames", "video ke frame", "video jadi gambar", "ekstrak frame", "extract frames", "frame video", "video ke foto", "screenshot video", "potong video jadi gambar", "video ke png", "video ke jpg", "frame ke zip"),
         "videotoaudio" to listOf("video ke audio", "mp4 ke mp3", "video to audio", "extract audio", "ekstrak audio", "ubah video ke suara", "video jadi suara", "ambil suara video"),
-        // Photo Editor + Design Studio + Background Remover = satu tool Studio Kreatif.
+        // Photo Editor + Design Studio + Background Remover = satu tool Foto Studio.
         "creativestudio" to listOf(
             "studio kreatif", "creative studio", "photo editor", "edit foto", "edit gambar", "kecerahan", "kontras foto",
             "design studio", "kanvas", "thumbnail", "poster", "banner", "desain", "template desain",
-            "hapus background", "hapus latar", "background remover", "remove background", "png transparan"
+            "hapus background", "hapus latar", "background remover", "remove background", "png transparan",
+            "foto studio", "animation studio", "studio animasi", "animasi desain", "animasikan", "keyframe", "motion graphic", "gif animasi", "buat gif", "animasi teks", "intro animasi"
         ),
-        "animationstudio" to listOf("animation studio", "studio animasi", "animasi desain", "animasikan", "keyframe", "motion graphic", "gif animasi", "buat gif", "animasi teks", "intro animasi"),
         "presentationstudio" to listOf("presentation studio", "presentasi", "slide", "buat presentasi", "slideshow", "powerpoint", "pitch deck", "pdf presentasi", "mode presentasi"),
         "videoeditor" to listOf("video editor", "edit video", "timeline video", "potong video", "gabung video", "trim video", "video potret", "teks di video", "subtitle video", "file srt", "impor srt", "musik di video", "tambah musik ke video", "bekukan frame", "hapus bagian hening"),
         "audioeditor" to listOf("audio editor", "edit audio", "waveform", "potong audio", "fade audio", "voice over", "rekam suara", "gabung audio"),

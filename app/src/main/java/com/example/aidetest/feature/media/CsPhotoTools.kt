@@ -47,7 +47,7 @@ internal interface CsHost {
 }
 
 /**
- * Panel layer foto Studio Kreatif — semua alat Photo Editor & Background Remover lama:
+ * Panel layer foto Foto Studio — semua alat Photo Editor & Background Remover lama:
  *  - Atur: exposure, kontras, highlight, shadow · suhu, tint, saturasi, vibrance
  *  - Filter: 13 preset dengan thumbnail + intensitas
  *  - Kurva & HSL: kurva RGB/R/G/B dengan histogram, HSL 8 rentang warna

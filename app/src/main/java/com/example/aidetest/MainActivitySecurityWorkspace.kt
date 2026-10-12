@@ -630,7 +630,7 @@ internal fun MainActivity.imageStudioTool() {
             "Image Studio",
             "Edit, hapus latar, kompres, konversi, dan trace gambar ke SVG.",
             listOf(
-                "Studio Kreatif (foto, desain, hapus latar)" to "creativestudio",
+                "Foto Studio (foto, desain, hapus latar)" to "creativestudio",
                 "Image Compressor" to "imagecompress",
                 "Image Converter" to "imageconvert",
                 "Auto Trace (Image → SVG)" to "autotrace",

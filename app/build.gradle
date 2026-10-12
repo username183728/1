@@ -21,7 +21,7 @@ android {
                 : 142
         def configuredVersionName = project.hasProperty("versionName")
                 ? project.property("versionName").toString()
-                : "2.52.0"
+                : "2.51.1"
 
         versionCode configuredVersionCode
         versionName configuredVersionName

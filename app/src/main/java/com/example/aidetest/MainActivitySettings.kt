@@ -237,7 +237,7 @@ internal fun MainActivity.showAllTools(forceRebuild: Boolean = false) {
                             "Security" -> listOf("securitycenter","hash","checksum","password","passwordstrength","hmac","jwt","totp","aes","fileencryption","securenotes","pgp","sshkeygen","certviewer","urlsafety","virusscanner","breachchecker","totpvault","passwordanalyzer","steganography")
                             "Network" -> listOf("network","dns","dohdns","rdns","ping","traceroute","whois","port","netscanner","publicip","ipinfo","ipintelligence","ssl","http","httpheaders","restclient","websocket","wifi","networkcenter","webhostwifi")
                             "System" -> listOf("devicecenter","deviceinfo","storage","apps","battery","clipboard")
-                            "Media" -> listOf("color","imagestudio","creativestudio","animationstudio","presentationstudio","videoeditor","audioeditor","imagecompress","imageconvert","batchconvert","videotoaudio","steganography")
+                            "Media" -> listOf("color","imagestudio","creativestudio","presentationstudio","videoeditor","audioeditor","imagecompress","imageconvert","batchconvert","videotoaudio","videoframes","steganography")
                             "QR / OCR" -> listOf("qr","ocr")
                             "Finance" -> listOf("financereader","financedashboard","dcacalc","compoundcalc","margincalc","discountcalc","pphcalc","riskcalc")
                             "Utility" -> listOf("reminder","stopwatch","timer","unitconverter","number","history")

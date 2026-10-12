@@ -34,10 +34,10 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * Presentation Studio — dek slide berbasis kanvas Studio Kreatif:
+ * Presentation Studio — dek slide berbasis kanvas Foto Studio:
  *  - Daftar slide: tambah (kosong / desain Studio / proyek Studio), duplikat, hapus, geser urutan
  *  - Editor slide fokus: pilih & seret layer, teks, bentuk, foto, stiker, warna, putar, opasitas, urutan
- *  - Transisi per slide (tanpa/fade/geser), animasi masuk per objek (preset Animation Studio) + pratinjau
+ *  - Transisi per slide (tanpa/fade/geser), animasi masuk per objek (preset Animasi) + pratinjau
  *  - Ukuran 16:9 / 4:3 / 9:16, mode presentasi layar penuh (ketuk/geser untuk maju, Back untuk keluar)
  *  - Undo/redo, simpan otomatis + proyek (files/design/present), ekspor PDF & MP4 slideshow
  */
@@ -293,11 +293,11 @@ internal class PresentStudioUi(private val a: MainActivity) {
     private fun addSlideMenu() {
         kit.menu("Tambah slide", listOf(
             "Slide kosong" to { insertSlide(d.blankSlide()) },
-            "Desain Studio Kreatif saat ini" to {
+            "Desain Foto Studio saat ini" to {
                 val doc = currentStudioDoc(a)
-                if (doc == null) a.toast("Studio Kreatif belum punya desain") else insertDoc(doc)
+                if (doc == null) a.toast("Foto Studio belum punya desain") else insertDoc(doc)
             },
-            "Proyek Studio Kreatif…" to { pickStudioProject() },
+            "Proyek Foto Studio…" to { pickStudioProject() },
             "Foto sebagai slide…" to { pickPhoto(asSlide = true) }
         ))
     }
@@ -328,8 +328,8 @@ internal class PresentStudioUi(private val a: MainActivity) {
 
     private fun pickStudioProject() {
         val files = CsStore.listProjects(a)
-        if (files.isEmpty()) { a.toast("Belum ada proyek Studio Kreatif tersimpan"); return }
-        a.themedDialog().setTitle("Proyek Studio Kreatif")
+        if (files.isEmpty()) { a.toast("Belum ada proyek Foto Studio tersimpan"); return }
+        a.themedDialog().setTitle("Proyek Foto Studio")
             .setItems(files.map { it.nameWithoutExtension }.toTypedArray()) { _, i ->
                 val doc = loadStudioProject(a, files[i])
                 if (doc == null) a.toast("Proyek rusak atau tidak bisa dibaca") else insertDoc(doc)
@@ -448,9 +448,9 @@ internal class PresentStudioUi(private val a: MainActivity) {
         panelTitle.text = "Slide ${d.current + 1} dari ${d.slides.size}"
         buttonRow("+ Slide kosong" to { insertSlide(d.blankSlide()) }, "Duplikat" to { duplicateSlide() })
         buttonRow("◀ Pindah" to { moveSlide(-1) }, "Pindah ▶" to { moveSlide(1) }, "Hapus" to { deleteSlide() })
-        buttonRow("Dari Studio Kreatif" to {
+        buttonRow("Dari Foto Studio" to {
             val doc = currentStudioDoc(a)
-            if (doc == null) a.toast("Studio Kreatif belum punya desain") else insertDoc(doc)
+            if (doc == null) a.toast("Foto Studio belum punya desain") else insertDoc(doc)
         }, "Proyek Studio…" to { pickStudioProject() })
         caption("TRANSISI MASUK")
         panelBody.addView(kit.segmented(PrDeck.TRANSITIONS, s.transition) { k ->
@@ -945,10 +945,10 @@ internal class PresentStudioUi(private val a: MainActivity) {
 
     private fun showHelp() {
         a.themedDialog().setTitle(PRESENT_STUDIO_PAGE).setMessage(
-            "• Tiap slide adalah kanvas Studio Kreatif. Ketuk objek untuk memilih, seret untuk memindahkan; panel Objek untuk teks, warna, ukuran, putar, opasitas, urutan.\n" +
-                "• Tambah slide dari tombol + (kosong, desain Studio Kreatif saat ini, proyek Studio, atau foto). Dari Studio Kreatif: Ekspor › Kirim ke › Presentasi.\n" +
+            "• Tiap slide adalah kanvas Foto Studio. Ketuk objek untuk memilih, seret untuk memindahkan; panel Objek untuk teks, warna, ukuran, putar, opasitas, urutan.\n" +
+                "• Tambah slide dari tombol + (kosong, desain Foto Studio saat ini, proyek Studio, atau foto). Dari Foto Studio: Ekspor › Kirim ke › Presentasi.\n" +
                 "• Tekan lama gambar mini slide: duplikat, pindah, hapus. Transisi & latar di panel Slide.\n" +
-                "• Animasi: animasi masuk per objek (preset Animation Studio), diputar berurutan.\n" +
+                "• Animasi: animasi masuk per objek (preset Animasi), diputar berurutan.\n" +
                 "• Tampilkan: layar penuh. Ketuk sisi kanan / geser ke kiri = maju, sisi kiri / geser ke kanan = mundur, Back = keluar.\n" +
                 "• Ekspor PDF (satu halaman per slide) atau MP4 slideshow (detik per slide). Proyek tersimpan otomatis (files/design/present)."
         ).setPositiveButton("OK", null).show()

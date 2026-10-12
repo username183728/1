@@ -12,8 +12,8 @@ import java.util.Locale
 
 /**
  * Editing Studio — launcher profesional tanpa scroll:
- *  - Kartu "Lanjutkan" (proyek Video Editor tersimpan / proyek Studio Kreatif)
- *  - Editor utama: Studio Kreatif (foto + desain + hapus latar) selebar layar, lalu Video & Audio
+ *  - Kartu "Lanjutkan" (proyek Video Editor tersimpan / proyek Foto Studio)
+ *  - Editor utama: Foto Studio (foto + desain + hapus latar) selebar layar, lalu Video & Audio
  *  - Tab kategori (Gambar · Teks & Kode · Konversi) berisi grid tool pendukung
  */
 private object EditingStudioState {
@@ -33,16 +33,15 @@ internal class EditingStudioHub(private val a: MainActivity) {
     private val gridBox = LinearLayout(a)
 
     private val featured = listOf(
-        Triple(CsToolIds.ID, CsToolIds.NAME, "Foto · desain · hapus latar AI · layer"),
+        Triple(CsToolIds.ID, CsToolIds.NAME, "Foto · desain · animasi · hapus latar AI"),
         Triple("videoeditor", "Video Editor", "Potret · multi-track · ekspor MP4"),
         Triple("audioeditor", "Audio Editor", "Waveform · fade · AAC"),
-        Triple(ANIM_STUDIO_ID, "Animation Studio", "Keyframe · preset · MP4/GIF"),
         Triple(PRESENT_STUDIO_ID, "Presentation Studio", "Slide · transisi · PDF/MP4")
     )
     private val tabs = linkedMapOf(
         "gambar" to ("Gambar" to listOf("imagestudio", "imagecompress", "imageconvert", "autotrace", "color", "ocr")),
         "kode" to ("Teks & Kode" to listOf("editor", "webeditor")),
-        "konversi" to ("Konversi" to listOf("batchconvert", "videotoaudio", "fileconvert"))
+        "konversi" to ("Konversi" to listOf("batchconvert", "videotoaudio", "videoframes", "fileconvert"))
     )
 
     private fun dp(v: Int) = a.dp(v)
@@ -88,7 +87,7 @@ internal class EditingStudioHub(private val a: MainActivity) {
         a.openToolWithPress(id, v)
     }
 
-    /** Proyek Studio Kreatif aktif (sesi ini) atau simpanan otomatis terakhir: (nama, ukuran, jumlah layer). */
+    /** Proyek Foto Studio aktif (sesi ini) atau simpanan otomatis terakhir: (nama, ukuran, jumlah layer). */
     private fun studioProject(): Triple<String, String, Int>? {
         if (CsProject.initialized) {
             return if (CsProject.elements.isEmpty()) null
@@ -103,7 +102,7 @@ internal class EditingStudioHub(private val a: MainActivity) {
         }.getOrNull()
     }
 
-    /** Kartu lanjutkan proyek: Video Editor (tersimpan permanen) atau Studio Kreatif. */
+    /** Kartu lanjutkan proyek: Video Editor (tersimpan permanen) atau Foto Studio. */
     private fun resumeCard(): View? {
         val savedVideo = runCatching {
             val json = a.prefs.getString("ve_project_v2", null) ?: return@runCatching null
@@ -156,7 +155,7 @@ internal class EditingStudioHub(private val a: MainActivity) {
     private fun featuredGrid(): View {
         val grid = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
         val items = featured.filter { a.homeToolMap.containsKey(it.first) }
-        // Studio Kreatif (foto + desain + hapus latar dalam satu editor) selebar layar; editor lain berpasangan.
+        // Foto Studio (foto + desain + hapus latar dalam satu editor) selebar layar; editor lain berpasangan.
         val hero = items.firstOrNull()
         if (hero != null) grid.addView(featuredCard(hero.first, hero.second, hero.third), LinearLayout.LayoutParams(-1, 0, 1f))
         val rest = items.drop(1)

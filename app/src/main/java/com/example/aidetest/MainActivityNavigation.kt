@@ -372,15 +372,21 @@ internal fun MainActivity.setupDynamicShortcuts() {
                 .setIcon(icon)
                 .setIntent(Intent(this, MainActivity::class.java).setAction(Intent.ACTION_VIEW).putExtra("open_finance", true))
                 .build(),
-            // Dari 2.50.1 P0: pintasan editing. Id tool divalidasi terhadap registry saat dibuka (applyPendingDeepLink).
-            ShortcutInfo.Builder(this, "studio")
-                .setShortLabel("Studio Kreatif")
-                .setLongLabel("Buka Studio Kreatif (foto & desain)")
+        ) + listOf(
+            // Pintasan editing (dari Editing Edition 2.50.1), ditambahkan di samping pintasan keuangan.
+            Triple("studio", "Foto Studio", "creativestudio"),
+            Triple("photo", "Edit Foto", "imagestudio"),
+            Triple("color", "Warna", "color"),
+        ).filter { it.third in homeToolMap }.map { (id, label, tool) ->
+            ShortcutInfo.Builder(this, id)
+                .setShortLabel(label)
+                .setLongLabel("Buka $label")
                 .setIcon(icon)
-                .setIntent(Intent(this, MainActivity::class.java).setAction(Intent.ACTION_VIEW).putExtra("open_tool", "creativestudio"))
-                .build(),
-        )
-        sm.dynamicShortcuts = shortcuts
+                .setIntent(Intent(this, MainActivity::class.java).setAction(Intent.ACTION_VIEW).putExtra("open_tool", tool))
+                .build()
+        }
+        // Launcher menolak daftar yang melebihi batasnya; sisakan yang muat sesuai urutan.
+        sm.dynamicShortcuts = shortcuts.take(sm.maxShortcutCountPerActivity.coerceAtLeast(1))
     }
 internal fun MainActivity.scheduleFinanceMaintenance() {
         val request = PeriodicWorkRequest.Builder(FinanceMaintenanceWorker::class.java, 24, java.util.concurrent.TimeUnit.HOURS)
@@ -492,7 +498,7 @@ internal fun MainActivity.enterApp() {
         // entry into the app, including after login, shortcuts, and deep links.
         applySystemTheme()
         applyUiColors()
-        // APK Studio Kreatif: aplikasi = studio; tidak ada Beranda/daftar tool.
+        // APK Foto Studio: aplikasi = studio; tidak ada Beranda/daftar tool.
         if (BuildConfig.STUDIO_ONLY) { bottomNav.visibility = View.GONE; pendingDeepLink = null; creativeStudioTool(); return }
         showHome()
         appEntered = true
@@ -529,9 +535,9 @@ internal fun MainActivity.applyPendingDeepLink() {
             "quick_income" -> { financeReaderTool(0); showAddTxDialog(FinanceDb(this), true) }
             "open_github_upload" -> openTool("githubzip")
             else -> if (target.startsWith("tool:")) {
-                val toolId = target.removePrefix("tool:")
-                if (homeToolMap.containsKey(toolId)) openTool(toolId)
-                else android.util.Log.w("GITLS", "Shortcut tool id tidak ada di registry: $toolId")
+                // Hanya id yang terdaftar (atau alias lama Foto Studio) yang boleh dibuka dari luar.
+                val tool = target.removePrefix("tool:")
+                if (CsToolIds.canonical(tool) in homeToolMap) openTool(tool)
             }
         }
     }.onFailure { android.util.Log.w("GITLS", "Deep link $target failed", it) }
@@ -699,6 +705,8 @@ internal fun MainActivity.clearPage(name: String = currentPage, pushBack: Boolea
             }
         }
         content.removeAllViews()
+        content.minimumHeight = 0
+        content.layoutParams?.let { if (it.height != android.view.ViewGroup.LayoutParams.WRAP_CONTENT) { it.height = android.view.ViewGroup.LayoutParams.WRAP_CONTENT; content.layoutParams = it } }
         lastOutputCard = null
         modernUiRunnable?.let { modernUiHandler.removeCallbacks(it) }
         modernUiRunnable = null
@@ -1048,7 +1056,7 @@ internal fun MainActivity.saveCurrentPageSnapshot() {
         val childCount = content.childCount
         // Video Editor selalu lightweight: state proyek ada di VeProject, jadi halaman
         // dibangun ulang (top bar sendiri) alih-alih memulihkan view lama.
-        if (childCount > 50 || currentPage == "Video Editor" || currentPage == CREATIVE_STUDIO_PAGE || currentPage == "Auto Trace" ||
+        if (childCount > 50 || currentPage == "Video Editor" || currentPage == "Video to Frames" || currentPage == CREATIVE_STUDIO_PAGE || currentPage == "Auto Trace" ||
             currentPage == ANIM_STUDIO_PAGE || currentPage == PRESENT_STUDIO_PAGE ||
             currentPage == "Design Studio" || currentPage == "Photo Editor" || currentPage == "Background Remover" || currentPage == "Audio Editor") {
             content.removeAllViews()
@@ -1099,7 +1107,8 @@ internal fun MainActivity.restoreSnapshot(snapshot: PageSnapshot) {
                     "settings" -> showSettings()
                     "Editor", "Console", "Preview" -> editor(editorFile, editorMode)
                     "Video Editor" -> videoEditorTool()
-                    CREATIVE_STUDIO_PAGE -> creativeStudioTool()
+                    "Video to Frames" -> videoFramesTool()
+                    CREATIVE_STUDIO_PAGE -> creativeStudioTool(restore = true)
                     ANIM_STUDIO_PAGE -> animationStudioTool()
                     PRESENT_STUDIO_PAGE -> presentationStudioTool()
                     "Auto Trace" -> autoTraceTool()
@@ -1196,7 +1205,7 @@ internal fun MainActivity.navigateBack() {
         }
         // Laci Workspace / laci Editor ditutup lebih dulu sebelum pindah halaman.
         if (OverlayBack.consume()) return
-        // APK Studio Kreatif: Back dari studio = keluar aplikasi (tidak ada Beranda).
+        // APK Foto Studio: Back dari studio = keluar aplikasi (tidak ada Beranda).
         if (BuildConfig.STUDIO_ONLY && currentPage == CREATIVE_STUDIO_PAGE) { finish(); return }
         // Simpan data form terbaru sebelum kembali (semua tools).
         runCatching { harvestToolSessionFromContent(); persistToolSessionFields() }

@@ -16,7 +16,7 @@ import kotlin.math.roundToLong
  *
  * Model animasi: setiap layer (CsElement.id) punya track keyframe berisi OFFSET terhadap desain
  * aslinya (geser dx/dy px kanvas, putar derajat, skala ×, opasitas ×). Keadaan "diam" = desain
- * Studio Kreatif apa adanya, jadi preset tetap benar di mana pun objek berada.
+ * Foto Studio apa adanya, jadi preset tetap benar di mana pun objek berada.
  */
 
 // ====================================================================== easing

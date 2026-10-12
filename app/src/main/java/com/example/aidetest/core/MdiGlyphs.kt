@@ -434,7 +434,7 @@ object MdiGlyphs {
         "wifi-strength-4" to mdi(0xF0928),
         "wrench" to mdi(0xF05B7),
         "xml" to mdi(0xF05C0),
-        // Studio Kreatif (Photo Editor + Design Studio + Hapus Latar); sisanya sudah ada di blok atas
+        // Foto Studio (Photo Editor + Design Studio + Hapus Latar); sisanya sudah ada di blok atas
         "crop" to mdi(0xF019E),
         "shape-outline" to mdi(0xF0832),
         // Keuangan (codepoint diverifikasi terhadap assets/fonts/materialdesignicons-webfont.ttf)

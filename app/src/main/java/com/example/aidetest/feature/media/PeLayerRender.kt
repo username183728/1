@@ -13,7 +13,7 @@ import kotlin.math.max
 /**
  * Tipografi & stiker bersama: daftar font, mode campur, stiker MDI/emoji, dan render PeLayer.
  * Dipindah utuh (API tidak berubah) dari PhotoEditorPro.kt saat Photo Editor digabung ke
- * Studio Kreatif. Dipakai Studio Kreatif dan Video Editor (VeOverlayRender).
+ * Foto Studio. Dipakai Foto Studio dan Video Editor (VeOverlayRender).
  */
 internal object PeLayerRender {
     val FONTS: List<Pair<String, String>> = listOf(

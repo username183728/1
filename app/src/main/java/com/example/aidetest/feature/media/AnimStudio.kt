@@ -12,7 +12,7 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 /*
- * Animation Studio — bagian suite Studio Kreatif: menganimasikan desain/foto Studio Kreatif.
+ * Animation Studio — bagian suite Foto Studio: menganimasikan desain/foto Foto Studio.
  *  - AnimCore.kt   : logika murni (keyframe, easing, preset, YUV, GIF) — teruji JVM
  *  - AnimRender.kt : render beranimasi, kanvas pratinjau, encoder MP4/GIF, publikasi
  *  - AnimStudio.kt : (file ini) state proyek, penyimpanan JSON (files/design/anim), serah-terima antar modul
@@ -20,17 +20,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 
 internal const val ANIM_STUDIO_ID = "animationstudio"
-internal const val ANIM_STUDIO_PAGE = "Animation Studio"
+internal const val ANIM_STUDIO_PAGE = "Animasi"
 internal const val PRESENT_STUDIO_ID = "presentationstudio"
 internal const val PRESENT_STUDIO_PAGE = "Presentation Studio"
 
-internal fun MainActivity.animationStudioTool() {
-    clearPage(ANIM_STUDIO_PAGE)
-    topBarVisibility(false)
-    content.setPadding(0, 0, 0, 0)
-    val ui = AnimStudioUi(this)
-    content.addView(ui.root, LinearLayout.LayoutParams(-1, 0, 1f))
-}
+/** Animasi kini mode di dalam Foto Studio (tab "Animasi"). */
+internal fun MainActivity.animationStudioTool() = creativeStudioTool(CsToolIds.Entry.ANIM)
 
 /** Ekspor yang sedang berjalan (bertahan walau halaman dibangun ulang, mis. ganti tema). */
 internal class AnJob(val label: String) {
@@ -185,7 +180,7 @@ internal object AnStore {
     }
 }
 
-/** Dokumen Studio Kreatif saat ini: sesi aktif, atau simpanan otomatisnya. */
+/** Dokumen Foto Studio saat ini: sesi aktif, atau simpanan otomatisnya. */
 internal fun currentStudioDoc(ctx: Context): CsDocData? {
     if (CsProject.initialized) return if (CsProject.elements.isNotEmpty()) CsProject.doc() else null
     val f = CsStore.autosaveFile(ctx)
@@ -285,7 +280,7 @@ internal object StudioHandoff {
         }.start()
     }
 
-    /** Render desain Studio Kreatif ke PNG resolusi kanvas (transparansi dipertahankan) lalu kirim ke Video Editor. */
+    /** Render desain Foto Studio ke PNG resolusi kanvas (transparansi dipertahankan) lalu kirim ke Video Editor. */
     fun designToVideoEditor(a: MainActivity, doc: CsDocData, onBusy: (Boolean) -> Unit) {
         onBusy(true)
         val ctx = a.applicationContext

@@ -145,6 +145,21 @@ internal fun MainActivity.passwordStrengthTool() {
         })
     }
 
+/** Kunci tinggi content = tinggi viewport agar tidak bisa di-scroll & tombol bawah tidak terpotong (semua ukuran HP). */
+internal fun MainActivity.lockContentToViewport() {
+    fun apply() {
+        val h = scroll.height - scroll.paddingTop - scroll.paddingBottom
+        if (h <= 0) return
+        val lp = content.layoutParams ?: return
+        if (lp.height != h) { lp.height = h; content.layoutParams = lp }
+    }
+    apply()
+    scroll.post { apply() }
+    scroll.addOnLayoutChangeListener { _, _, t, _, b, _, ot, _, ob ->
+        if (b - t != ob - ot && currentPage in setOf("Stopwatch", "Timer")) apply()
+    }
+}
+
 internal fun MainActivity.stopwatchTool() {
         clearPage("Stopwatch")
         // Layout fixed: display + daftar lap (scroll) + tombol diam di bawah.
@@ -159,10 +174,7 @@ internal fun MainActivity.stopwatchTool() {
         )
 
         content.setPadding(dp(16), dp(8), dp(16), dp(12))
-        content.post {
-            val h = scroll.height - content.paddingTop - content.paddingBottom
-            if (h > 0) content.minimumHeight = h
-        }
+        lockContentToViewport()
 
         val display = label("00:00.000", 44f, true).apply {
             gravity = Gravity.CENTER
@@ -182,6 +194,7 @@ internal fun MainActivity.stopwatchTool() {
             isFillViewport = false
             addView(lapList, LinearLayout.LayoutParams(-1, -2))
         }
+        lapScroll.isNestedScrollingEnabled = true
         content.addView(lapScroll, LinearLayout.LayoutParams(-1, 0, 1f).apply {
             topMargin = dp(4)
             bottomMargin = dp(10)
@@ -289,64 +302,112 @@ internal fun MainActivity.stopwatchTool() {
 
 internal fun MainActivity.timerTool() {
         clearPage("Timer")
-        // Timer dibuat sebagai workspace fokus: tanpa chip Favorit/Terkait/Riwayat/Panduan.
-        content.addView(subLabel("Hitung mundur sederhana.", 13f).apply {
-            setPadding(dp(2), dp(2), dp(2), dp(14))
+        var endAt = 0L
+        content.setPadding(dp(16), dp(8), dp(16), dp(12))
+        lockContentToViewport()
+        content.addView(subLabel("Hitung mundur: bulan, hari, jam, menit, detik.", 13f).apply {
+            setPadding(dp(2), dp(2), dp(2), dp(10))
         })
 
-        val seconds = edit("Detik", false).apply {
-            setText("60")
-            gravity = Gravity.CENTER_VERTICAL
+        // Input 5 kolom: bulan(30 hr), hari, jam, menit, detik
+        val units = listOf("Bln", "Hari", "Jam", "Mnt", "Dtk")
+        val secPer = longArrayOf(30L * 86400, 86400, 3600, 60, 1)
+        val inputs = units.mapIndexed { i, u ->
+            edit(u, false).apply {
+                inputType = InputType.TYPE_CLASS_NUMBER
+                gravity = Gravity.CENTER
+                setText(if (i == 3) "1" else "0")
+                setSingleLine(true)
+                setPadding(dp(2), 0, dp(2), 0)
+                textSize = 16f
+            }
         }
-        content.addView(seconds, LinearLayout.LayoutParams(-1, dp(64)).apply {
-            bottomMargin = dp(8)
-        })
-
-        val display = label("60 s", 40f, true).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, dp(12), 0, dp(12))
+        val inputRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        inputs.forEachIndexed { i, e ->
+            inputRow.addView(e, LinearLayout.LayoutParams(0, dp(52), 1f).apply {
+                if (i > 0) leftMargin = dp(6)
+            })
         }
-        content.addView(display, LinearLayout.LayoutParams(-1, dp(92)))
+        content.addView(inputRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
 
-        // Dorong dua kontrol utama ke bagian bawah viewport Timer.
-        val bottomSpacer = Space(this)
-        content.addView(bottomSpacer, LinearLayout.LayoutParams(1, 0, 1f))
+        // Tampilan sisa waktu: 5 sel angka + satuan
+        val cells = units.map { u ->
+            val num = label("00", 28f, true).apply { gravity = Gravity.CENTER }
+            val cap = subLabel(u, 12f).apply { gravity = Gravity.CENTER }
+            val box = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                addView(num, LinearLayout.LayoutParams(-1, -2))
+                addView(cap, LinearLayout.LayoutParams(-1, -2))
+            }
+            Triple(box, num, cap)
+        }
+        val displayRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(24), 0, dp(12))
+        }
+        cells.forEach { displayRow.addView(it.first, LinearLayout.LayoutParams(0, -2, 1f)) }
+        content.addView(displayRow, LinearLayout.LayoutParams(-1, -2))
+
+        fun render(totalSec: Long) {
+            var r = totalSec.coerceAtLeast(0)
+            cells.forEachIndexed { i, c ->
+                val v = r / secPer[i]; r %= secPer[i]
+                c.second.text = String.format(Locale.US, "%02d", v)
+            }
+        }
+        fun inputSeconds(): Long = inputs.indices.sumOf { (inputs[it].text.toString().toLongOrNull() ?: 0L) * secPer[it] }
+            .coerceIn(0L, 99L * 30 * 86400)
+        render(inputSeconds())
+        inputs.forEach { e ->
+            e.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+                override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) { if (endAt == 0L) render(inputSeconds()) }
+                override fun afterTextChanged(s: android.text.Editable?) {}
+            })
+        }
+
+        // Spacer mendorong tombol ke bawah; tombol selalu terlihat
+        content.addView(Space(this), LinearLayout.LayoutParams(1, 0, 1f))
 
         val handler = Handler(Looper.getMainLooper())
         var runnable: Runnable? = null
 
         val startButton = button("Mulai") {
             runnable?.let { handler.removeCallbacks(it) }
-            var left = seconds.text.toString().toLongOrNull()?.coerceIn(1, 86400) ?: 60L
-            seconds.setText(left.toString())
+            val total = inputSeconds()
+            if (total <= 0L) { toast("Isi waktu dulu"); return@button }
+            endAt = SystemClock.elapsedRealtime() + total * 1000
             runnable = object : Runnable {
                 override fun run() {
-                    display.text = "$left s"
+                    val left = ((endAt - SystemClock.elapsedRealtime() + 999) / 1000).coerceAtLeast(0)
+                    render(left)
                     if (left <= 0) {
-                        if (Build.VERSION.SDK_INT >= 26) {
-                            (getSystemService(Context.VIBRATOR_SERVICE) as Vibrator)
-                                .vibrate(VibrationEffect.createOneShot(250, VibrationEffect.DEFAULT_AMPLITUDE))
+                        endAt = 0L
+                        runCatching {
+                            if (Build.VERSION.SDK_INT >= 26) {
+                                (getSystemService(Context.VIBRATOR_SERVICE) as Vibrator)
+                                    .vibrate(VibrationEffect.createOneShot(250, VibrationEffect.DEFAULT_AMPLITUDE))
+                            }
                         }
                         toast("Timer selesai")
                         runnable = null
                         return
                     }
-                    left--
-                    handler.postDelayed(this, 1000)
+                    handler.postDelayed(this, 200)
                 }
             }.also { handler.post(it) }
         }
         val stopButton = button("Stop") {
             runnable?.let { handler.removeCallbacks(it) }
             runnable = null
+            endAt = 0L
+            render(inputSeconds())
         }
+        styleAsSecondary(stopButton)
 
-        content.addView(startButton, LinearLayout.LayoutParams(-1, dp(58)).apply {
-            bottomMargin = dp(10)
-        })
-        content.addView(stopButton, LinearLayout.LayoutParams(-1, dp(58)).apply {
-            bottomMargin = dp(8)
-        })
+        content.addView(startButton, LinearLayout.LayoutParams(-1, dp(56)).apply { bottomMargin = dp(8) })
+        content.addView(stopButton, LinearLayout.LayoutParams(-1, dp(56)))
     }
 
 internal fun MainActivity.textStatTool() {

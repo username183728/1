@@ -3,7 +3,7 @@ package com.example.aidetest
 import java.util.UUID
 
 /*
- * Model murni Studio Kreatif (gabungan Photo Editor + Design Studio + Hapus Latar).
+ * Model murni Foto Studio (gabungan Photo Editor + Design Studio + Hapus Latar).
  * Tidak memakai API Android sehingga codec & logika bisa diuji di JVM (CsCodecTest).
  *
  * Satu dokumen = kanvas + daftar layer berurutan (indeks 0 = paling belakang).

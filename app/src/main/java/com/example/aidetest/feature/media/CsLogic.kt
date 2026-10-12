@@ -9,22 +9,23 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
- * Registry id Studio Kreatif. Tiga tool lama digabung menjadi satu; id lama tetap berfungsi
+ * Registry id Foto Studio. Tiga tool lama digabung menjadi satu; id lama tetap berfungsi
  * (alias) dan id yang tersimpan (favorit, terbaru, statistik pemakaian) dimigrasi sekali.
  */
 internal object CsToolIds {
     const val ID = "creativestudio"
-    const val NAME = "Studio Kreatif"
-    val LEGACY: Set<String> = setOf("photoeditor", "designstudio", "bgremover")
+    const val NAME = "Foto Studio"
+    val LEGACY: Set<String> = setOf("photoeditor", "designstudio", "bgremover", "animationstudio")
 
     /** Aksi awal saat studio dibuka lewat id lama. */
-    enum class Entry { DEFAULT, PHOTO, CUTOUT }
+    enum class Entry { DEFAULT, PHOTO, CUTOUT, ANIM }
 
     fun canonical(id: String): String = if (id in LEGACY) ID else id
 
     fun entryFor(id: String): Entry = when (id) {
         "photoeditor" -> Entry.PHOTO
         "bgremover" -> Entry.CUTOUT
+        "animationstudio" -> Entry.ANIM
         else -> Entry.DEFAULT
     }
 
@@ -63,7 +64,7 @@ internal object CsToolIds {
     }
 }
 
-/** Matematika murni Studio Kreatif (ukuran ekspor, geometri foto, crop, gradien, batas alpha). */
+/** Matematika murni Foto Studio (ukuran ekspor, geometri foto, crop, gradien, batas alpha). */
 internal object CsMath {
     const val MAX_CANVAS = 4096
     /** Batas sisi terpanjang satu layer foto saat ekspor (sama dengan Photo Editor lama). */

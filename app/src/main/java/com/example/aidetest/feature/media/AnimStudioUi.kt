@@ -40,8 +40,8 @@ internal class EdMaxScroll(ctx: Context) : ScrollView(ctx) {
 }
 
 /**
- * Animation Studio — animasikan desain Studio Kreatif:
- *  - Sumber: desain Studio Kreatif saat ini, proyek Studio tersimpan, atau foto (satu layer)
+ * Animation Studio — animasikan desain Foto Studio:
+ *  - Sumber: desain Foto Studio saat ini, proyek Studio tersimpan, atau foto (satu layer)
  *  - Keyframe per layer: geser X/Y, putar, skala, opasitas + easing (linear / in / out / in-out)
  *  - Timeline: geser playhead, keyframe layer terpilih & semua layer, putar/jeda 30 fps (Choreographer)
  *  - Seret layer di kanvas = keyframe posisi di playhead; preset masuk (fade, geser, pop, zoom, putar)
@@ -506,7 +506,7 @@ internal class AnimStudioUi(private val a: MainActivity) {
                 checkpoint(); p.tracks.remove(el.id); changed()
             }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(6) })
         }
-        note("Layer terkunci di Studio Kreatif tidak bisa diseret di kanvas, tetapi tetap bisa dianimasikan dari panel ini.")
+        note("Layer terkunci di Foto Studio tidak bisa diseret di kanvas, tetapi tetap bisa dianimasikan dari panel ini.")
     }
 
     private fun renderKeyPanel() {
@@ -834,8 +834,8 @@ internal class AnimStudioUi(private val a: MainActivity) {
 
     private fun showSourceMenu() {
         kit.menu("Animasikan", listOf(
-            "Desain Studio Kreatif saat ini" to { openCurrentStudio() },
-            "Proyek Studio Kreatif tersimpan…" to { openStudioProjectDialog() },
+            "Desain Foto Studio saat ini" to { openCurrentStudio() },
+            "Proyek Foto Studio tersimpan…" to { openStudioProjectDialog() },
             "Foto (satu layer)…" to { pickPhoto() },
             "Buka proyek animasi…" to { openAnimProjectDialog() }
         ))
@@ -866,14 +866,14 @@ internal class AnimStudioUi(private val a: MainActivity) {
 
     private fun openCurrentStudio() {
         val d = currentStudioDoc(a)
-        if (d == null) { a.toast("Studio Kreatif belum punya desain — buat dulu atau pilih foto"); return }
+        if (d == null) { a.toast("Foto Studio belum punya desain — buat dulu atau pilih foto"); return }
         replaceDoc(d, d.name)
     }
 
     private fun openStudioProjectDialog() {
         val files = CsStore.listProjects(a)
-        if (files.isEmpty()) { a.toast("Belum ada proyek Studio Kreatif tersimpan"); return }
-        a.themedDialog().setTitle("Proyek Studio Kreatif")
+        if (files.isEmpty()) { a.toast("Belum ada proyek Foto Studio tersimpan"); return }
+        a.themedDialog().setTitle("Proyek Foto Studio")
             .setItems(files.map { it.nameWithoutExtension }.toTypedArray()) { _, i ->
                 val d = loadStudioProject(a, files[i])
                 if (d == null || d.elements.isEmpty()) a.toast("Proyek kosong atau rusak") else replaceDoc(d, d.name)
@@ -951,7 +951,7 @@ internal class AnimStudioUi(private val a: MainActivity) {
 
     private fun showHelp() {
         a.themedDialog().setTitle(ANIM_STUDIO_PAGE).setMessage(
-            "• Sumber: desain Studio Kreatif saat ini, proyek Studio tersimpan, atau satu foto. Dari Studio Kreatif: Ekspor › Kirim ke › Animation Studio.\n" +
+            "• Sumber: desain Foto Studio saat ini, proyek Studio tersimpan, atau satu foto. Dari Foto Studio: Ekspor › Kirim ke › Animation Studio.\n" +
                 "• Ketuk objek untuk memilih. Seret objek = keyframe posisi di playhead. Panel Keyframe: geser X/Y, putar, skala, opasitas, easing.\n" +
                 "• Nilai keyframe adalah offset dari desain asli: semua nol / 100% = persis seperti desain.\n" +
                 "• Timeline: seret untuk menggeser playhead. Belah ketupat = keyframe layer terpilih; garis kecil = keyframe layer lain.\n" +
@@ -978,8 +978,8 @@ internal class AnimStudioUi(private val a: MainActivity) {
         card.addView(kit.text("Animasikan desain", 16f, c.ink, true).apply { gravity = Gravity.CENTER; setPadding(0, dp(8), 0, dp(4)) })
         card.addView(kit.text("Keyframe posisi, putar, skala, dan opasitas per layer.\nEkspor MP4 atau GIF.", 12f, c.muted).apply { gravity = Gravity.CENTER })
         val hasStudio = currentStudioDoc(a) != null
-        if (hasStudio) card.addView(kit.primaryButton("Desain Studio Kreatif saat ini") { openCurrentStudio() }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(14) })
-        card.addView(kit.secondaryButton("Proyek Studio Kreatif…") { openStudioProjectDialog() }, LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(8) })
+        if (hasStudio) card.addView(kit.primaryButton("Desain Foto Studio saat ini") { openCurrentStudio() }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(14) })
+        card.addView(kit.secondaryButton("Proyek Foto Studio…") { openStudioProjectDialog() }, LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(8) })
         card.addView((if (hasStudio) kit.secondaryButton("Pilih foto…") { pickPhoto() } else kit.primaryButton("Pilih foto…") { pickPhoto() }),
             LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(8) })
         if (AnStore.listProjects(a).isNotEmpty()) {

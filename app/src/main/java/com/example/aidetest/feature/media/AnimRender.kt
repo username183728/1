@@ -29,7 +29,7 @@ import kotlin.math.roundToInt
 
 /*
  * Render & ekspor bersama Animation Studio dan Presentation Studio:
- *  - AnDraw: gambar dokumen Studio Kreatif (CsDocData) dengan keadaan animasi per layer
+ *  - AnDraw: gambar dokumen Foto Studio (CsDocData) dengan keadaan animasi per layer
  *  - AnPreviewImages: bitmap layer foto untuk pratinjau (dirender di thread kerja CsPipeline)
  *  - AnStageView: kanvas pratinjau + pilih/seret layer
  *  - AnEncode: MP4 H.264 (MediaCodec input Image YUV420Flexible + MediaMuxer) dan GIF89a (AnGifEncoder)

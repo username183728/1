@@ -15,7 +15,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /*
- * Presentation Studio — bagian suite Studio Kreatif: dek slide, tiap slide = dokumen kanvas Studio
+ * Presentation Studio — bagian suite Foto Studio: dek slide, tiap slide = dokumen kanvas Studio
  * Kreatif (CsElement + CsRender + CsCodec). Transisi per slide (tanpa / fade / geser), animasi masuk per
  * objek (preset Animation Studio), mode presentasi layar penuh, simpan/buka proyek (files/design/present),
  * ekspor PDF (satu halaman per slide) dan MP4 slideshow (encoder Animation Studio).
@@ -120,7 +120,7 @@ internal object PrDeck {
         sizeKey = key
     }
 
-    /** Tambah dokumen Studio Kreatif sebagai slide (dek kosong mengikuti rasio desain). */
+    /** Tambah dokumen Foto Studio sebagai slide (dek kosong mengikuti rasio desain). */
     fun appendDoc(d: CsDocData): PrSlide {
         if (slides.isEmpty()) {
             val key = AnLayout.nearestSlideSize(d.w, d.h)

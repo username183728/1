@@ -326,7 +326,7 @@ internal class VideoEditorUi(val a: MainActivity) {
 
     // ------------------------------------------------------------------ build: top bar
 
-    /** Top bar sama dengan Studio Kreatif & Audio Editor: kembali · judul/subjudul · undo/redo · menu · Ekspor. */
+    /** Top bar sama dengan Foto Studio & Audio Editor: kembali · judul/subjudul · undo/redo · menu · Ekspor. */
     private fun buildTopBar() {
         topBar.orientation = LinearLayout.HORIZONTAL
         topBar.gravity = Gravity.CENTER_VERTICAL
@@ -1044,7 +1044,7 @@ internal class VideoEditorUi(val a: MainActivity) {
         immersive = hideTimeline
         dock.removeAllViews()
         val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
-        // Kepala panel sama dengan Studio Kreatif: judul 14 tebal · tutup (chevron bawah).
+        // Kepala panel sama dengan Foto Studio: judul 14 tebal · tutup (chevron bawah).
         val header = LinearLayout(a).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1718,7 +1718,7 @@ internal class VideoEditorUi(val a: MainActivity) {
 
     // ------------------------------------------------------------------ menus
 
-    /** Menu daftar bertema — sama dengan menu Studio Kreatif & Audio Editor. */
+    /** Menu daftar bertema — sama dengan menu Foto Studio & Audio Editor. */
     private fun menu(title: String, items: List<Pair<String, () -> Unit>>) {
         a.themedDialog()
             .setTitle(title)

@@ -549,12 +549,12 @@ class MainActivity : Activity() {
         "stopwatch" to "Stopwatch", "timer" to "Timer",
         "imagestudio" to "Image Studio",
         // Photo Editor + Design Studio + Background Remover digabung; id lama = alias (CsToolIds).
-        "creativestudio" to "Studio Kreatif",
-        // Suite Studio Kreatif: animasi & presentasi berbasis dokumen kanvas yang sama.
-        "animationstudio" to "Animation Studio",
+        "creativestudio" to "Foto Studio",
+        // Suite Foto Studio: animasi & presentasi berbasis dokumen kanvas yang sama.
         "presentationstudio" to "Presentation Studio",
         "videoeditor" to "Video Editor",
         "videotoaudio" to "Video → Audio",
+        "videoframes" to "Video to Frames",
         "editingstudio" to "Editing Studio",
         "audioeditor" to "Audio Editor",
         "batchconvert" to "Converter & Batch",
@@ -964,6 +964,7 @@ class MainActivity : Activity() {
                 1230, 1231 -> videoEditorPickPending = null
                 1240, 1241 -> audioEditorPickPending = null
                 1260 -> batchConverterPickPending = null
+                1270 -> videoFramesPickPending = null
             }
         }
         val selectedUri = data?.data
@@ -1009,6 +1010,13 @@ class MainActivity : Activity() {
                 }
                 1212 -> {
                     imageStudioResult?.invoke(selectedUri)
+                    return
+                }
+                1270 -> {
+                    // Video to Frames picker
+                    persistUriPermissionsSafely(selectedUri, wantWrite = false)
+                    videoFramesPickPending?.invoke(selectedUri)
+                    videoFramesPickPending = null
                     return
                 }
                 9911 -> {
@@ -1569,7 +1577,7 @@ class MainActivity : Activity() {
     internal val toolUpdateCatalog = linkedMapOf(
         "githubzip" to "2.30.0",
         "creativestudio" to "2.50.0",
-        "animationstudio" to "2.51.0",
+        "videoframes" to "2.51.3",
         "presentationstudio" to "2.51.0",
         "videoeditor" to "2.50.0",
         "webhostwifi" to "2.19.8",

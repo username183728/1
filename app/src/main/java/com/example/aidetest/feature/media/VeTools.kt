@@ -426,6 +426,27 @@ internal object VePublish {
         return pub
     }
 
+    /**
+     * ZIP ditulis streaming ke Documents/GITLS (Android 10+, atau 7–9 dengan izin); selain itu ke folder aplikasi.
+     * [write] harus menulis seluruh ZIP ke stream yang diberikan. Bila [write] melempar, berkas parsial dihapus.
+     */
+    fun zipStream(ctx: Context, baseName: String, write: (java.io.OutputStream) -> Unit): VePublished {
+        val name = "${safe(baseName)}_${System.currentTimeMillis()}.zip"
+        val pub = insert(ctx, Target(MediaStore.Files.getContentUri("external"), Environment.DIRECTORY_DOCUMENTS, "application/zip"), name, write)
+        if (pub != null) return pub
+        val dir = ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: ctx.filesDir
+        if (!dir.exists()) dir.mkdirs()
+        val f = File(dir, name)
+        try {
+            f.outputStream().buffered(256 * 1024).use { write(it) }
+        } catch (e: Throwable) {
+            runCatching { f.delete() }
+            throw e
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", f)
+        return VePublished(uri, "Folder aplikasi/Documents/$name", f.length(), "application/zip", f)
+    }
+
     /** Video hasil render → Movies/GITLS (Android 10+, atau 7–9 dengan izin); selain itu folder aplikasi. */
     fun video(ctx: Context, src: File, baseName: String): VePublished {
         val name = "${safe(baseName)}_${System.currentTimeMillis()}.mp4"
