@@ -79,7 +79,7 @@ internal class ImgKit(val a: MainActivity) {
     }
 
     /** Tombol teks kecil berbentuk pil. */
-    fun pill(label: String, active: Boolean, onClick: () -> Unit): TextView = TextView(a).apply {
+    fun pill(label: String, active: Boolean = false, onClick: () -> Unit): TextView = TextView(a).apply {
         text = label
         textSize = 12f
         gravity = Gravity.CENTER

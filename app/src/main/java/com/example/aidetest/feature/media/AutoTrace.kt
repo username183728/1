@@ -66,6 +66,7 @@ private val TRACE_PRESETS = listOf(
     TracePreset("am_logo_bw", "AM Logo B&W", false, 140, 2, 3.2, 768),
     TracePreset("am_icon_color", "AM Icon Color", true, 128, 6, 2.8, 768),
     TracePreset("am_sticker", "AM Sticker", true, 120, 8, 2.2, 896),
+    TracePreset("anime_char", "Anime Character", true, 110, 10, 1.6, 1024),
     TracePreset("am_simple", "AM Simple (ringan)", false, 150, 2, 4.5, 640),
     TracePreset("detail_high", "Detail Tinggi", true, 128, 12, 1.0, 1024),
     TracePreset("custom", "Custom (slider)", false, 128, 8, 2.0, 1024)
@@ -75,6 +76,7 @@ private fun presetIcon(id: String): String = when (id) {
     "am_logo_bw" -> "vector-square"
     "am_icon_color" -> "palette-outline"
     "am_sticker" -> "image-outline"
+    "anime_char" -> "face-woman-outline"
     "am_simple" -> "flash-outline"
     "detail_high" -> "magnify-plus-outline"
     else -> "tune-variant"
@@ -652,17 +654,47 @@ internal class AutoTraceUi(private val a: MainActivity) {
         pm.menu.add(0, 1, 0, if (s.settingsOpen) "Lipat pengaturan" else "Buka pengaturan")
         pm.menu.add(0, 2, 1, "Kosongkan antrean batch")
         pm.menu.add(0, 3, 2, "Reset ke preset AM Icon Color")
-        pm.menu.add(0, 4, 3, "Bantuan")
+        pm.menu.add(0, 5, 3, "Kirim ke Potong Manual")
+        pm.menu.add(0, 4, 4, "Bantuan")
         pm.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> setSettingsOpen(!s.settingsOpen)
                 2 -> if (!s.busy) { s.batchUris.clear(); syncAll() }
                 3 -> applyPreset(TRACE_PRESETS.first { it.id == "am_icon_color" })
+                5 -> sendToPotong()
                 4 -> showHelp()
             }
             true
         }
         pm.show()
+    }
+
+    /** Buka Foto Studio → tab Potong dengan gambar sumber saat ini (hybrid auto → manual). */
+    private fun sendToPotong() {
+        val bmp = s.source
+        if (bmp == null) { a.toast("Pilih gambar dulu"); return }
+        if (s.busy) { a.toast("Tunggu proses selesai"); return }
+        // Simpan sementara ke cache supaya Cutout bisa memuat
+        try {
+            val dir = File(a.cacheDir, "autotrace_handoff").apply { mkdirs() }
+            val f = File(dir, "source_${System.currentTimeMillis()}.png")
+            java.io.FileOutputStream(f).use { out ->
+                bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+            a.getSharedPreferences("gitls_handoff", 0).edit()
+                .putString("cutout_source_path", f.absolutePath)
+                .apply()
+            a.toast("Membuka Potong Manual…")
+            // Buka Creative Studio / Foto Studio (yang berisi tab Potong)
+            if (a.homeToolMap.containsKey("creativestudio") || a.homeToolMap.containsKey("imagestudio")) {
+                val id = if (a.homeToolMap.containsKey("creativestudio")) "creativestudio" else "imagestudio"
+                a.openTool(id)
+            } else {
+                a.toast("Foto Studio belum tersedia")
+            }
+        } catch (e: Exception) {
+            a.toast("Gagal kirim: ${e.message}")
+        }
     }
 
     private fun showHelp() {
@@ -671,11 +703,12 @@ internal class AutoTraceUi(private val a: MainActivity) {
             .setMessage(
                 "Mengubah gambar raster menjadi SVG vector (lokal).\n\n" +
                     "• Gambar: pilih 1 gambar · Batch: pilih banyak gambar sekaligus\n" +
-                    "• Preset Alight Motion: path lebih sederhana, warna terbatas\n" +
+                    "• Preset Alight Motion + Anime Character (baru)\n" +
                     "• Mode B&W (threshold) & Color (median-cut)\n" +
                     "• Asli / SVG: bandingkan hasil di pratinjau\n" +
-                    "• Simpan / Bagikan: file .svg di Pictures app\n\n" +
-                    "Bukan AI vectorizer — terbaik pada logo/ikon/ilustrasi flat kontras tinggi."
+                    "• Simpan / Bagikan: file .svg di Pictures app\n" +
+                    "• Kirim ke Potong Manual: lanjutkan editing manual di tab Potong\n\n" +
+                    "Hybrid workflow: Auto Trace → refine di Potong Manual → Kirim ke Desain."
             )
             .setPositiveButton("OK", null)
             .show()

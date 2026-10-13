@@ -9,6 +9,9 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.PathMeasure
+import android.graphics.RectF
 import android.graphics.Shader
 import android.media.Image
 import android.media.MediaCodec
@@ -45,7 +48,10 @@ internal object AnDraw {
         if (s.dx == 0f && s.dy == 0f && s.rot == 0f && s.opacity == 1f) el
         else el.copy(x = el.x + s.dx, y = el.y + s.dy, rotation = el.rotation + s.rot, opacity = el.opacity * s.opacity)
 
-    /** Gambar dokumen dalam koordinat kanvas dokumen. [background] = gambar latar kanvas. */
+    /**
+     * Gambar dokumen dalam koordinat kanvas dokumen. [background] = gambar latar kanvas.
+     * [stateAt] = keadaan layer pada waktu lain (motion blur); efek & transisi dari [opts] (AnFxDraw).
+     */
     fun drawDoc(
         ctx: Context,
         canvas: Canvas,
@@ -53,20 +59,45 @@ internal object AnDraw {
         state: (CsElement) -> AnState,
         image: (CsElement) -> AnLayerImage?,
         paint: Paint,
-        background: Boolean
+        background: Boolean,
+        t: Long = 0L,
+        opts: Map<String, AnLayerOpt> = emptyMap(),
+        durationMs: Long = Long.MAX_VALUE,
+        stateAt: ((CsElement, Long) -> AnState)? = null
     ) {
+        val plan = if (opts.isEmpty()) null else AnFxDraw.plan(doc, opts, t, durationMs)
+        val shakeSave = plan?.shake?.let { v -> canvas.save().also { AnFxDraw.applyShake(canvas, doc, v) } } ?: -1
         if (background) CsRender.drawBackground(canvas, doc.bg, doc.w.toFloat(), doc.h.toFloat(), paint)
         for (el in doc.elements) {
             if (!el.visible) continue
+            // Rentang aktif / sembunyi khusus Animasi: di luar in..out layer tidak digambar
+            // (kecuali sedang dalam jendela transisi masuk/keluar).
+            val o = opts[el.id]
+            val role = plan?.role(el.id, t)
+            if (o != null && !o.activeAt(t, durationMs) && (role == null || o.hidden)) continue
             val s = state(el)
             if (s.opacity <= 0.002f || s.scale <= 0.002f) continue
-            val e = animated(el, s)
-            val save = canvas.save()
-            if (s.scale != 1f) canvas.scale(s.scale, s.scale, e.x + e.w / 2f, e.y + e.h / 2f)
             val img = if (el.type == CsType.IMAGE) image(el) else null
-            CsRender.draw(ctx, canvas, e, paint, img?.bitmap, img?.shadow)
-            canvas.restoreToCount(save)
+            if (plan != null && (role != null || !o?.effects.isNullOrEmpty())) {
+                AnFxDraw.drawLayer(ctx, canvas, doc, el, s, o, role, t, paint, img, stateAt)
+            } else {
+                drawLayer(ctx, canvas, el, s, img, o, t, paint)
+            }
         }
+        if (plan != null) AnFxDraw.overlays(canvas, doc, plan, t, paint)
+        if (shakeSave >= 0) canvas.restoreToCount(shakeSave)
+    }
+
+    /** Satu layer dengan keadaan animasi [s] (tanpa efek). */
+    fun drawLayer(ctx: Context, canvas: Canvas, el: CsElement, s: AnState, img: AnLayerImage?, o: AnLayerOpt?, t: Long, paint: Paint) {
+        if (s.opacity <= 0.002f || s.scale <= 0.002f) return
+        val e = animated(el, s)
+        val save = canvas.save()
+        if (s.scale != 1f) canvas.scale(s.scale, s.scale, e.x + e.w / 2f, e.y + e.h / 2f)
+        val ta = o?.text
+        if (ta != null && el.type == CsType.TEXT) AnTextDraw.draw(canvas, e, ta, t, paint)
+        else CsRender.draw(ctx, canvas, e, paint, img?.bitmap, img?.shadow)
+        canvas.restoreToCount(save)
     }
 
     /**
@@ -90,7 +121,137 @@ internal object AnDraw {
         return out
     }
 
+    /** Layer aktif (rentang & sembunyi) di waktu [t]. */
+    fun active(opts: Map<String, AnLayerOpt>, id: String, t: Long, durationMs: Long): Boolean = opts[id]?.activeAt(t, durationMs) ?: true
+
     fun maxScale(tracks: Map<String, List<AnKey>>): Float = tracks.values.flatten().maxOfOrNull { it.scale }?.coerceAtLeast(1f) ?: 1f
+}
+
+// ====================================================================== teks beranimasi
+
+/**
+ * Teks beranimasi per huruf (pratinjau & ekspor memakai jalur yang sama lewat AnDraw.drawDoc).
+ * Pewaktuan dari AnTextMath; gaya mengikuti CsRender (huruf, ukuran, perataan, warna, outline,
+ * bayangan, kotak latar). Batasan: miring 3D & mode campur layer tidak diterapkan selama animasi
+ * teks aktif; huruf digambar satu per satu (kerning antarhuruf tidak dipakai).
+ */
+internal object AnTextDraw {
+    private val path = Path()
+    private val measure = PathMeasure()
+
+    fun draw(canvas: Canvas, el: CsElement, a: AnTextAnim, t: Long, paint: Paint) {
+        val alpha = (el.opacity.coerceIn(0f, 1f) * 255).roundToInt()
+        if (alpha <= 0) return
+        val save = if (alpha < 255) canvas.saveLayerAlpha(null, alpha) else canvas.save()
+        if (el.rotation != 0f) canvas.rotate(el.rotation, el.x + el.w / 2f, el.y + el.h / 2f)
+        val boxOn = Color.alpha(el.textBg) > 0
+        if (boxOn) {
+            val pad = el.textBgPad * el.textSize
+            val r = el.cornerRadius.coerceAtLeast(0f)
+            paint.reset()
+            paint.isAntiAlias = true
+            paint.style = Paint.Style.FILL
+            paint.color = el.textBg
+            if (el.shadow) paint.setShadowLayer(el.shadowBlur.coerceAtLeast(1f), el.shadowDx, el.shadowDy, el.shadowColor)
+            canvas.drawRoundRect(RectF(el.x - pad, el.y - pad * 0.5f, el.x + el.w + pad, el.y + el.h + pad * 0.5f), r, r, paint)
+        }
+        CsRender.prepareText(el, paint)
+        paint.letterSpacing = el.letterSpacing + AnTextMath.extraSpacing(a, t)
+        val align = when (el.align) { CsAlign.CENTER -> 1; CsAlign.RIGHT -> 2; else -> 0 }
+        if (a.type == AnTextMath.PATH) drawOnPath(canvas, el, a, t, paint, align, !boxOn)
+        else drawGlyphs(canvas, el, a, t, paint, align, !boxOn)
+        canvas.restoreToCount(save)
+    }
+
+    private fun withAlpha(color: Int, f: Float): Int =
+        Color.argb((Color.alpha(color) * f.coerceIn(0f, 1f)).roundToInt(), Color.red(color), Color.green(color), Color.blue(color))
+
+    private fun shadowOn(el: CsElement, paint: Paint, f: Float, shadow: Boolean) {
+        if (shadow && el.shadow) paint.setShadowLayer(el.shadowBlur.coerceAtLeast(1f), el.shadowDx, el.shadowDy, withAlpha(el.shadowColor, f))
+        else paint.clearShadowLayer()
+    }
+
+    /** Outline (bila ada) lalu isi, opasitas × [f]; bayangan ikut huruf bila tidak ada kotak latar. */
+    private inline fun strokeFill(el: CsElement, paint: Paint, f: Float, shadow: Boolean, draw: () -> Unit) {
+        val outline = el.strokeWidth > 0f && Color.alpha(el.strokeColor) > 0
+        if (outline) {
+            paint.style = Paint.Style.STROKE
+            paint.strokeJoin = Paint.Join.ROUND
+            paint.strokeWidth = el.strokeWidth
+            paint.color = withAlpha(el.strokeColor, f)
+            shadowOn(el, paint, f, shadow)
+            draw()
+            paint.clearShadowLayer()
+        }
+        paint.style = Paint.Style.FILL
+        paint.color = withAlpha(el.color, f)
+        if (!outline) shadowOn(el, paint, f, shadow)
+        draw()
+        paint.clearShadowLayer()
+    }
+
+    private fun drawGlyphs(canvas: Canvas, el: CsElement, a: AnTextAnim, t: Long, paint: Paint, align: Int, shadow: Boolean) {
+        val ls = CsRender.lines(el)
+        val gl = ls.map { AnTextMath.glyphs(it) }
+        val n = gl.sumOf { it.size }
+        val fm = paint.fontMetrics
+        val lineH = el.textSize * el.lineSpacing
+        var baseline = el.y - fm.ascent
+        var idx = 0
+        for ((li, line) in ls.withIndex()) {
+            val lx = AnTextMath.lineX(el.x, el.w, paint.measureText(line), align)
+            for (g in gl[li]) {
+                val fx = AnTextMath.fx(a, idx, n, t, el.textSize)
+                idx++
+                if (fx.alpha <= 0.004f || fx.scale <= 0.01f) continue
+                val x = lx + paint.measureText(line, 0, g.first)
+                val gw = paint.measureText(line, g.first, g.last + 1)
+                val sv = canvas.save()
+                canvas.translate(fx.dx, fx.dy)
+                if (fx.scale != 1f) canvas.scale(fx.scale, fx.scale, x + gw / 2f, baseline - el.textSize * 0.35f)
+                strokeFill(el, paint, fx.alpha, shadow) { canvas.drawText(line, g.first, g.last + 1, x, baseline, paint) }
+                canvas.restoreToCount(sv)
+            }
+            baseline += lineH
+        }
+    }
+
+    /** Teks di sepanjang jalur (lengkung / busur / lingkaran) di dalam kotak layer, muncul huruf demi huruf. */
+    private fun drawOnPath(canvas: Canvas, el: CsElement, a: AnTextAnim, t: Long, paint: Paint, align: Int, shadow: Boolean) {
+        val text = CsRender.lines(el).joinToString(" ").trim()
+        if (text.isEmpty()) return
+        val glyphs = AnTextMath.glyphs(text)
+        val shown = AnTextMath.visibleCount(glyphs.size, t, a.startMs, a.durMs)
+        if (shown <= 0) return
+        val textW = paint.measureText(text)
+        val x = el.x
+        val w = el.w.coerceAtLeast(1f)
+        val bottom = el.y + el.h
+        val amt = a.amount.coerceIn(0.2f, 2f)
+        path.reset()
+        when (a.path) {
+            AnTextMath.PATH_ARC -> {
+                val rh = w * 0.25f * amt
+                path.addArc(RectF(x, bottom - rh, x + w, bottom + rh), 180f, 180f)
+            }
+            AnTextMath.PATH_CIRCLE -> {
+                val r = max(textW / (2f * Math.PI.toFloat()) * 1.08f, el.textSize)
+                val cx = x + w / 2f
+                val cy = el.y + el.h / 2f
+                path.addArc(RectF(cx - r, cy - r, cx + r, cy + r), -90f, 359.9f)
+            }
+            else -> {
+                path.moveTo(x, bottom)
+                path.quadTo(x + w / 2f, bottom - el.h * 1.4f * amt, x + w, bottom)
+            }
+        }
+        measure.setPath(path, false)
+        val off = if (a.path == AnTextMath.PATH_CIRCLE) 0f else AnTextMath.pathOffset(measure.length, textW, align)
+        val fm = paint.fontMetrics
+        val v = -(fm.ascent + fm.descent) / 2f
+        val sub = text.substring(0, glyphs[shown - 1].last + 1)
+        strokeFill(el, paint, 1f, shadow) { canvas.drawTextOnPath(sub, path, off, v, paint) }
+    }
 }
 
 /**
@@ -147,6 +308,12 @@ internal class AnPreviewImages(private val onReady: () -> Unit) {
 internal class AnStageView(ctx: Context, private val c: EditorChrome) : View(ctx) {
     var doc: CsDocData? = null
     var state: (CsElement) -> AnState = { AnState.IDENTITY }
+    /** Waktu & opsi layer Animasi (rentang aktif, animasi teks); kosong = desain statis. */
+    var timeMs: () -> Long = { 0L }
+    var opts: Map<String, AnLayerOpt> = emptyMap()
+    var durationMs: Long = Long.MAX_VALUE
+    /** Keadaan layer di waktu lain (motion blur); null = tanpa motion blur. */
+    var stateAt: ((CsElement, Long) -> AnState)? = null
     var images: AnPreviewImages? = null
     var selectedId: String? = null
     var interactive = true
@@ -205,11 +372,11 @@ internal class AnStageView(ctx: Context, private val c: EditorChrome) : View(ctx
         canvas.save()
         canvas.clipRect(0f, 0f, cw, ch)
         val imgs = images
-        AnDraw.drawDoc(context, canvas, d, state, { el -> imgs?.get(el) }, paint, background = true)
+        AnDraw.drawDoc(context, canvas, d, state, { el -> imgs?.get(el) }, paint, background = true, t = timeMs(), opts = opts, durationMs = durationMs, stateAt = stateAt)
         canvas.restore()
         if (showOutline && interactive) {
             val sel = selectedId?.let { id -> d.elements.firstOrNull { it.id == id } }
-            if (sel != null) {
+            if (sel != null && AnDraw.active(opts, sel.id, timeMs(), durationMs)) {
                 val st = state(sel)
                 val e = AnDraw.animated(sel, st)
                 linePaint.style = Paint.Style.STROKE
@@ -243,6 +410,8 @@ internal class AnStageView(ctx: Context, private val c: EditorChrome) : View(ctx
         val tol = c.dp(8) / s
         return d.elements.asReversed().firstOrNull { el ->
             if (!el.visible || el.locked) return@firstOrNull false
+            val o = opts[el.id]
+            if (o != null && (o.locked || !o.activeAt(timeMs(), durationMs))) return@firstOrNull false
             val st = state(el)
             if (st.opacity <= 0.02f || st.scale <= 0.02f) return@firstOrNull false
             val e = AnDraw.animated(el, st)
@@ -319,16 +488,18 @@ internal class AnDocSource(
     override val width: Int,
     override val height: Int,
     private val images: Map<String, AnLayerImage>,
-    private val background: Boolean
+    private val background: Boolean,
+    private val opts: Map<String, AnLayerOpt> = emptyMap()
 ) : AnFrameSource {
     override val frameCount: Int = AnTiming.frameCount(durationMs, fps)
+    private val duration = durationMs
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     override fun drawFrame(i: Int, canvas: Canvas) {
         val t = AnTiming.frameMs(i, fps)
         val save = canvas.save()
         canvas.scale(width / doc.w.toFloat(), height / doc.h.toFloat())
-        AnDraw.drawDoc(ctx, canvas, doc, { el -> AnMath.sample(tracks[el.id] ?: emptyList(), t) }, { el -> images[el.id] }, paint, background)
+        AnDraw.drawDoc(ctx, canvas, doc, { el -> AnMath.sample(tracks[el.id] ?: emptyList(), t) }, { el -> images[el.id] }, paint, background, t, opts, duration) { el, tt -> AnMath.sample(tracks[el.id] ?: emptyList(), tt) }
         canvas.restoreToCount(save)
     }
 }

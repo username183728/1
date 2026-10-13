@@ -32,19 +32,22 @@ internal object AnEase {
         IN -> "Ease-in"
         OUT -> "Ease-out"
         IN_OUT -> "Ease-in-out"
-        else -> "Linear"
+        LINEAR -> "Linear"
+        else -> AnEasing.label(e)
     }
 
-    fun valid(e: String?): String = if (e != null && e in ALL) e else IN_OUT
+    /** Ease lama (4 nilai) atau bentuk lanjutan AnEasing (back/bounce/elastic/spring/bezier) → kanonik; rusak = in-out. */
+    fun valid(e: String?): String = if (e != null && e in ALL) e else AnEasing.canonical(e) ?: IN_OUT
 
-    /** Kurva kubik: 0 → 0, 1 → 1, monoton. */
+    /** Kurva kubik (4 nilai lama: 0 → 0, 1 → 1, monoton) atau kurva lanjutan AnEasing (boleh overshoot). */
     fun apply(e: String, p: Float): Float {
         val t = if (p.isNaN()) 0f else p.coerceIn(0f, 1f)
         return when (e) {
             IN -> t * t * t
             OUT -> { val u = 1f - t; 1f - u * u * u }
             IN_OUT -> if (t < 0.5f) 4f * t * t * t else { val u = -2f * t + 2f; 1f - u * u * u / 2f }
-            else -> t
+            LINEAR -> t
+            else -> AnEasing.parse(e)?.let { AnEasing.apply(it, t) } ?: t
         }
     }
 }
@@ -166,7 +169,8 @@ internal object AnPresets {
         "slide_up" to "Masuk bawah",
         "pop" to "Pop",
         "zoom" to "Zoom",
-        "spin" to "Putar"
+        "spin" to "Putar",
+        "parallax" to "Parallax ayun"
     )
     val IDS: Set<String> = ALL.map { it.first }.toSet()
 
@@ -176,6 +180,7 @@ internal object AnPresets {
     fun defaultMs(id: String): Long = when (id) {
         "pop" -> 500L
         "spin" -> 900L
+        "parallax" -> 2400L
         else -> 700L
     }
 
@@ -183,7 +188,10 @@ internal object AnPresets {
      * Keyframe preset masuk mulai [start] ms selama [dur] ms untuk layer berkotak (x, y, w, h) di kanvas cw×ch.
      * Objek berada di luar layar / tak terlihat sebelum [start] dan kembali ke desain asli di akhir.
      */
-    fun keys(id: String, start: Long, dur: Long, x: Float, y: Float, w: Float, h: Float, cw: Float, ch: Float): List<AnKey> {
+    fun keys(
+        id: String, start: Long, dur: Long, x: Float, y: Float, w: Float, h: Float, cw: Float, ch: Float,
+        depth: Float = 0f
+    ): List<AnKey> {
         val s = start.coerceAtLeast(0L)
         val d = dur.coerceAtLeast(100L)
         val e = s + d
@@ -199,6 +207,17 @@ internal object AnPresets {
             )
             "zoom" -> listOf(AnKey(s, scale = 1.8f, opacity = 0f, ease = AnEase.OUT), AnKey(e))
             "spin" -> listOf(AnKey(s, rot = -360f, scale = 0.2f, opacity = 0f, ease = AnEase.OUT), AnKey(e))
+            // Gerak ayun 2.5D: layer dengan kedalaman besar bergeser lebih jauh daripada yang di belakang.
+            "parallax" -> {
+                val amp = cw * 0.03f * (0.25f + 0.75f * depth.coerceIn(0f, 1f))
+                val q = d / 4
+                listOf(
+                    AnKey(s),
+                    AnKey(s + q, dx = amp),
+                    AnKey(s + 3 * q, dx = -amp),
+                    AnKey(e)
+                )
+            }
             else -> emptyList()
         }
     }

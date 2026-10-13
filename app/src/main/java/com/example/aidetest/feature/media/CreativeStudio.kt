@@ -356,6 +356,9 @@ internal object CsMasks {
 internal class CsShadow(val bitmap: Bitmap, val pad: Int, val innerW: Int, val innerH: Int)
 
 internal object CsRender {
+    /** Jumlah sel kisi untuk layer miring 3D (lebih banyak = lengkung lebih halus, lebih berat). */
+    private const val MESH_CELLS = 16
+
     fun typeface(el: CsElement): Typeface {
         val base = PeLayerRender.typeface(el.font)
         val style = when {
@@ -458,10 +461,11 @@ internal object CsRender {
      * Gambar satu layer dalam koordinat kanvas. [bmp] = hasil render foto (layer IMAGE),
      * [shadow] = bayangan berbentuk subjek (null = bayangan kotak).
      */
-    fun draw(ctx: Context, canvas: Canvas, el: CsElement, paint: Paint, bmp: Bitmap?, shadow: CsShadow?) {
+    /** Buka lapisan blend + opasitas layer; mengembalikan hitungan save untuk [Canvas.restoreToCount]. */
+    private fun openLayer(canvas: Canvas, el: CsElement): Int {
         val mode = porterDuff(el.blend)
         val alpha = (el.opacity.coerceIn(0f, 1f) * 255).roundToInt()
-        val save = if (mode != null || alpha < 255) {
+        return if (mode != null || alpha < 255) {
             val lp = Paint()
             lp.alpha = alpha
             var whiteBase = false
@@ -485,6 +489,39 @@ internal object CsRender {
             }
             canvas.saveLayer(layerBounds(el), lp).also { if (whiteBase) canvas.drawColor(Color.WHITE) }
         } else canvas.save()
+    }
+
+    /**
+     * Layer miring 3D: isi digambar datar ke bitmap sementara, lalu ditempel sebagai kisi yang sudah diproyeksikan.
+     * Bayangan foto (CsShadow dari cache pratinjau) tidak ikut pada mode 3D; bayangan bentuk/teks tetap ikut.
+     */
+    private fun drawTilted(ctx: Context, canvas: Canvas, el: CsElement, paint: Paint, bmp: Bitmap?) {
+        val s = Pe3D.scaleFor(el.w, el.h)
+        val ow = (el.w * s).roundToInt().coerceAtLeast(1)
+        val oh = (el.h * s).roundToInt().coerceAtLeast(1)
+        val off = runCatching { Bitmap.createBitmap(ow, oh, Bitmap.Config.ARGB_8888) }.getOrNull() ?: return
+        try {
+            val flat = el.copy(rotation = 0f, opacity = 1f, blend = "normal", tiltX = 0f, tiltY = 0f)
+            val oc = Canvas(off)
+            oc.scale(s, s)
+            oc.translate(-el.x, -el.y)
+            draw(ctx, oc, flat, Paint(), bmp, null)
+            val cx = el.x + el.w / 2f
+            val cy = el.y + el.h / 2f
+            val verts = Pe3D.mesh(el.w, el.h, el.tiltX, el.tiltY, MESH_CELLS)
+            for (i in verts.indices step 2) { verts[i] += cx; verts[i + 1] += cy }
+            val save = openLayer(canvas, el)
+            if (el.rotation != 0f) canvas.rotate(el.rotation, cx, cy)
+            canvas.drawBitmapMesh(off, MESH_CELLS, MESH_CELLS, verts, 0, null, 0, null)
+            canvas.restoreToCount(save)
+        } finally {
+            off.recycle()
+        }
+    }
+
+    fun draw(ctx: Context, canvas: Canvas, el: CsElement, paint: Paint, bmp: Bitmap?, shadow: CsShadow?) {
+        if (Pe3D.tilted(el)) { drawTilted(ctx, canvas, el, paint, bmp); return }
+        val save = openLayer(canvas, el)
         if (el.rotation != 0f) canvas.rotate(el.rotation, el.x + el.w / 2f, el.y + el.h / 2f)
         paint.reset()
         paint.isAntiAlias = true

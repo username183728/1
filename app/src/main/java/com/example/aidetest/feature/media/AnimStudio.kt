@@ -34,13 +34,15 @@ internal class AnJob(val label: String) {
     @Volatile var listener: (() -> Unit)? = null
 }
 
-internal class AnSnap(val tracks: Map<String, List<AnKey>>, val durationMs: Long)
+internal class AnSnap(val tracks: Map<String, List<AnKey>>, val durationMs: Long, val opts: Map<String, AnLayerOpt> = emptyMap())
 
 /** Proyek animasi aktif (bertahan antar pembangunan ulang halaman). */
 internal object AnProject {
     const val FPS = 30
     var doc: CsDocData? = null
     val tracks = LinkedHashMap<String, List<AnKey>>()
+    /** Opsi per layer (rentang aktif, sembunyi/kunci, animasi teks); tidak ada = bawaan. */
+    val opts = LinkedHashMap<String, AnLayerOpt>()
     var durationMs = 5_000L
     var name = "Animasi 1"
     var file: String? = null
@@ -62,23 +64,27 @@ internal object AnProject {
 
     fun keyCount(): Int = tracks.values.sumOf { it.size }
 
-    fun snapshot(): AnSnap = AnSnap(LinkedHashMap(tracks), durationMs)
+    fun snapshot(): AnSnap = AnSnap(LinkedHashMap(tracks), durationMs, LinkedHashMap(opts))
 
     fun restore(s: AnSnap) {
         tracks.clear()
         tracks.putAll(s.tracks)
+        opts.clear()
+        opts.putAll(s.opts)
         durationMs = s.durationMs
         playheadMs = playheadMs.coerceIn(0L, durationMs)
     }
 
     /** Ganti dokumen; track untuk layer yang tidak ada dibuang. */
-    fun setDoc(d: CsDocData, newName: String, keepTracks: Map<String, List<AnKey>> = emptyMap(), duration: Long = 5_000L, path: String? = null) {
+    fun setDoc(d: CsDocData, newName: String, keepTracks: Map<String, List<AnKey>> = emptyMap(), duration: Long = 5_000L, path: String? = null, keepOpts: Map<String, AnLayerOpt> = emptyMap()) {
         doc = d
         name = newName
         file = path
         tracks.clear()
         val ids = d.elements.map { it.id }.toSet()
         for ((id, k) in keepTracks) if (id in ids && k.isNotEmpty()) tracks[id] = k
+        opts.clear()
+        for ((id, o) in keepOpts) if (id in ids && !o.isDefault()) opts[id] = o
         durationMs = AnMath.clampDuration(duration)
         playheadMs = 0L
         selectedId = null
@@ -86,6 +92,10 @@ internal object AnProject {
         redo.clear()
         loaded = true
     }
+
+    fun opt(id: String): AnLayerOpt = opts[id] ?: AnLayerOpt.DEFAULT
+
+    fun setOpt(id: String, o: AnLayerOpt) { if (o.isDefault()) opts.remove(id) else opts[id] = o }
 
     fun element(id: String?): CsElement? = id?.let { i -> doc?.elements?.firstOrNull { it.id == i } }
 }
@@ -106,12 +116,14 @@ internal object AnStore {
             "fps" to AnProject.FPS,
             "savedAt" to now,
             "doc" to CsCodec.encodeDoc(d, now),
-            "tracks" to AnCodec.encodeTracks(p.tracks)
+            "tracks" to AnCodec.encodeTracks(p.tracks),
+            // Opsional (2.52+): proyek lama tanpa "layers" dimuat dengan rentang penuh.
+            "layers" to AnLayerCodec.encode(p.opts)
         )
         return treeToJson(tree).toString()
     }
 
-    class Loaded(val name: String, val doc: CsDocData, val tracks: Map<String, List<AnKey>>, val durationMs: Long)
+    class Loaded(val name: String, val doc: CsDocData, val tracks: Map<String, List<AnKey>>, val durationMs: Long, val opts: Map<String, AnLayerOpt> = emptyMap())
 
     fun parse(ctx: Context, text: String): Loaded {
         val m = jsonToTree(JSONObject(text))
@@ -122,12 +134,14 @@ internal object AnStore {
         @Suppress("UNCHECKED_CAST")
         val tracks = AnCodec.decodeTracks(m["tracks"] as? Map<String, Any?>)
         val dur = (m["duration"] as? Number)?.toLong() ?: 5_000L
-        return Loaded((m["name"] as? String)?.ifBlank { null } ?: d.name, d, tracks, dur)
+        @Suppress("UNCHECKED_CAST")
+        val opts = AnLayerCodec.decode(m["layers"] as? Map<String, Any?>)
+        return Loaded((m["name"] as? String)?.ifBlank { null } ?: d.name, d, tracks, dur, opts)
     }
 
     fun load(ctx: Context, f: File): Boolean = runCatching {
         val l = parse(ctx, f.readText())
-        AnProject.setDoc(l.doc, l.name, l.tracks, l.durationMs, if (f == autosaveFile(ctx)) null else f.absolutePath)
+        AnProject.setDoc(l.doc, l.name, l.tracks, l.durationMs, if (f == autosaveFile(ctx)) null else f.absolutePath, l.opts)
         true
     }.getOrDefault(false)
 
@@ -139,7 +153,7 @@ internal object AnStore {
         if (!f.exists()) return
         runCatching {
             val l = parse(ctx, f.readText())
-            AnProject.setDoc(l.doc, l.name, l.tracks, l.durationMs, null)
+            AnProject.setDoc(l.doc, l.name, l.tracks, l.durationMs, null, l.opts)
             // Path proyek asal disimpan terpisah agar Simpan menimpa berkas yang benar.
             val o = JSONObject(f.readText())
             o.optString("file", "").takeIf { it.isNotBlank() && File(it).exists() }?.let { AnProject.file = it }
@@ -174,7 +188,7 @@ internal object AnStore {
 
     /** Animasi yang akan diganti disimpan dulu bila punya keyframe (agar tidak hilang). */
     fun stashIfNeeded(ctx: Context): String? {
-        if (AnProject.doc == null || AnProject.keyCount() == 0) return null
+        if (AnProject.doc == null || (AnProject.keyCount() == 0 && AnProject.opts.isEmpty())) return null
         val file = AnProject.file?.let { File(it) }
         return runCatching { save(ctx, file)?.nameWithoutExtension }.getOrNull()
     }

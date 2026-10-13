@@ -684,7 +684,10 @@ internal fun MainActivity.clearPage(name: String = currentPage, pushBack: Boolea
         // Toolbar + laci Tool Editor Shell hanya untuk halaman tool; disembunyikan setiap ganti halaman.
         hideToolEditorShell()
         // Restore normal page padding when navigating away from a fixed-action form.
-        content.setPadding(content.paddingLeft, content.paddingTop, content.paddingRight, dp(104))
+        // Padding bawah besar hanya untuk halaman root; halaman tool cukup 12dp
+        // (bottomNav/dock adalah sibling di luar ScrollView, tidak menutupi konten).
+        val rootPad = name == "home" || name == "all" || name == "favorites" || name == "settings"
+        content.setPadding(content.paddingLeft, content.paddingTop, content.paddingRight, if (rootPad) dp(104) else dp(12))
         // Invalidate async tool callbacks before rebuilding/replacing the page.
         toolUiGeneration++
         // Selalu harvest field form halaman lama → data terbaru, meski pindah ke Home.

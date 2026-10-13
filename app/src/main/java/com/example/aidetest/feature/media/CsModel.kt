@@ -97,7 +97,12 @@ internal data class CsElement(
     /** Foto utama dokumen: selalu menutupi kanvas; crop/putar mengubah ukuran kanvas. */
     var fitCanvas: Boolean = false,
     /** "latar:<idFoto>" = layer latar pengganti yang dibuat panel Hapus Latar. */
-    var role: String = ""
+    var role: String = "",
+    /** Miring 3D (derajat, -60..60) pada sumbu X dan Y. 0 = datar. */
+    var tiltX: Float = 0f,
+    var tiltY: Float = 0f,
+    /** Kedalaman parallax 0..1: makin besar makin ikut bergerak (preset Parallax & pratinjau HP). */
+    var depth: Float = 0f
 )
 
 /** Latar kanvas: solid | gradient | transparent. */

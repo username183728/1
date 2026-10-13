@@ -9,6 +9,10 @@ import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
@@ -109,6 +113,10 @@ internal class CreativeStudioUi(private val a: MainActivity, private val entry: 
     )
     /** Bayangan subjek per layer: (bitmap hasil render, kunci blur/lebar, bayangan). */
     private val shadowCache = HashMap<String, Triple<Bitmap, Int, CsShadow>>()
+    private var parallaxLive = false
+    private var tiltNx = 0f
+    private var tiltNy = 0f
+    private var gravitySensor: SensorEventListener? = null
     private val renderListener: (String) -> Unit = { _ -> if (alive) { canvasView.invalidate(); photo.onRendered() } }
     private val errorListener: (Throwable) -> Unit = { e ->
         if (alive) a.toast(if (e is OutOfMemoryError) "Memori tidak cukup untuk pratinjau foto — kurangi jumlah foto" else "Render foto gagal: ${e.message ?: e.javaClass.simpleName}")
@@ -167,6 +175,7 @@ internal class CreativeStudioUi(private val a: MainActivity, private val entry: 
             override fun onViewAttachedToWindow(v: View) {}
             override fun onViewDetachedFromWindow(v: View) {
                 alive = false
+                setParallaxLive(false)
                 OverlayBack.remove(panelBack)
                 OverlayBack.remove(selectionBack)
                 focus?.close()
@@ -1480,6 +1489,16 @@ internal class CreativeStudioUi(private val a: MainActivity, private val entry: 
             rotRow.addView(kit.icon("refresh", 21f, c.ink, "Reset rotasi") { checkpoint(); el.rotation = 0f; changed() }.apply { background = c.pressable(c.surface2, 12) },
                 LinearLayout.LayoutParams(dp(48), dp(44)).apply { leftMargin = dp(6) })
             grid.addView(rotRow)
+            val tiltRow = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            tiltRow.addView(numField("Miring X°", el.tiltX, { v -> el.tiltX = v.coerceIn(-Pe3D.MAX_TILT, Pe3D.MAX_TILT) }), LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(4) })
+            tiltRow.addView(numField("Miring Y°", el.tiltY, { v -> el.tiltY = v.coerceIn(-Pe3D.MAX_TILT, Pe3D.MAX_TILT) }), LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(4); rightMargin = dp(4) })
+            tiltRow.addView(kit.icon("refresh", 21f, c.ink, "Reset miring 3D") { checkpoint(); el.tiltX = 0f; el.tiltY = 0f; changed() }.apply { background = c.pressable(c.surface2, 12) },
+                LinearLayout.LayoutParams(dp(48), dp(44)).apply { leftMargin = dp(6) })
+            grid.addView(tiltRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+            val depthRow = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            depthRow.addView(numField("Kedalaman %", el.depth * 100f, { v -> el.depth = (v / 100f).coerceIn(0f, 1f) }), LinearLayout.LayoutParams(0, dp(44), 1f))
+            grid.addView(depthRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+            grid.addView(kit.toggleRow("Parallax ikut gerak HP (pratinjau)", parallaxLive) { v -> setParallaxLive(v) }, LinearLayout.LayoutParams(-1, dp(40)))
             panelBody.addView(grid)
         } else {
             val u = els.map { boundsOf(it) }.reduce { acc, r -> acc.union(r) }
@@ -1530,6 +1549,31 @@ internal class CreativeStudioUi(private val a: MainActivity, private val entry: 
     }
 
     /** Kolom angka berlabel; nilai diterapkan saat tombol Selesai keyboard ditekan atau fokus pindah. */
+    /** Parallax pratinjau: layer bergeser mengikuti gravitasi HP. Ekspor memakai preset Parallax di Animasi. */
+    private fun setParallaxLive(on: Boolean) {
+        val sm = a.getSystemService(SensorManager::class.java)
+        val sensor = sm?.getDefaultSensor(Sensor.TYPE_GRAVITY)
+        gravitySensor?.let { sm?.unregisterListener(it) }
+        gravitySensor = null
+        tiltNx = 0f
+        tiltNy = 0f
+        parallaxLive = on && sensor != null
+        if (on && sensor == null) a.toast("HP ini tidak punya sensor gravitasi")
+        if (parallaxLive && sm != null && sensor != null) {
+            val listener = object : SensorEventListener {
+                override fun onSensorChanged(e: SensorEvent) {
+                    tiltNx = (e.values[0] / 9.8f).coerceIn(-1f, 1f)
+                    tiltNy = (e.values[1] / 9.8f).coerceIn(-1f, 1f)
+                    if (alive) canvasView.invalidate()
+                }
+                override fun onAccuracyChanged(s: Sensor?, accuracy: Int) {}
+            }
+            sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_UI)
+            gravitySensor = listener
+        }
+        canvasView.invalidate()
+    }
+
     private fun numField(label: String, value: Float, apply: (Float) -> Unit): View {
         val box = LinearLayout(a).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -2506,6 +2550,17 @@ internal class CreativeStudioUi(private val a: MainActivity, private val entry: 
         }
 
         private fun drawLayer(canvas: Canvas, el: CsElement) {
+            if (parallaxLive && el.depth > 0f) {
+                // Kedalaman besar = ikut bergeser lebih jauh (efek 2.5D).
+                val amp = CsProject.canvasW * 0.03f * el.depth
+                canvas.save()
+                canvas.translate(tiltNx * amp, tiltNy * amp)
+                drawLayerContent(canvas, el)
+                canvas.restore()
+            } else drawLayerContent(canvas, el)
+        }
+
+        private fun drawLayerContent(canvas: Canvas, el: CsElement) {
             if (el.type != CsType.IMAGE) {
                 CsRender.draw(a, canvas, el, paint, null, null)
                 return

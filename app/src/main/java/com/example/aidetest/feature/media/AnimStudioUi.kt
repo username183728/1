@@ -9,10 +9,13 @@ import android.graphics.Path
 import android.graphics.Typeface
 import android.os.Handler
 import android.os.Looper
+import android.text.TextPaint
 import android.text.TextUtils
 import android.view.Choreographer
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowManager
 import android.widget.EditText
@@ -43,7 +46,9 @@ internal class EdMaxScroll(ctx: Context) : ScrollView(ctx) {
  * Animation Studio — animasikan desain Foto Studio:
  *  - Sumber: desain Foto Studio saat ini, proyek Studio tersimpan, atau foto (satu layer)
  *  - Keyframe per layer: geser X/Y, putar, skala, opasitas + easing (linear / in / out / in-out)
- *  - Timeline: geser playhead, keyframe layer terpilih & semua layer, putar/jeda 30 fps (Choreographer)
+ *  - Timeline multi-layer: satu baris per layer (keyframe bisa diseret, snap 50 ms), rentang aktif in/out,
+ *    sembunyi/kunci per track, zoom (cubit / tombol) + gulir; putar/jeda 30 fps (Choreographer)
+ *  - Animasi teks per huruf (ketik, fade/pop, pantul, gelombang, tracking, jalur, judul, subjudul)
  *  - Seret layer di kanvas = keyframe posisi di playhead; preset masuk (fade, geser, pop, zoom, putar)
  *  - Undo/redo, simpan otomatis + proyek (files/design/anim), ekspor MP4 H.264 / GIF + Kirim ke Video Editor
  */
@@ -67,7 +72,7 @@ internal class AnimStudioUi(private val a: MainActivity) {
     private val transport = LinearLayout(a)
     private val playBtn: MdiIconView
     private val timeText = TextView(a)
-    private val timeline: AnTimelineView
+    private val timeline: AnTracksView
     private val panelHost = LinearLayout(a)
     private val panelTitle = TextView(a)
     private val panelScroll = EdMaxScroll(a)
@@ -86,6 +91,8 @@ internal class AnimStudioUi(private val a: MainActivity) {
     private var dragBase: AnState? = null
     private var presetMs = 700L
     private var presetAll = false
+    private var graphView: AnGraphView? = null
+    private var effSel = 0
     private val images = AnPreviewImages { if (alive) stage.invalidate() }
 
     private val panelBack: () -> Boolean = { if (panelKey != null && root.isAttachedToWindow) { closePanel(); true } else false }
@@ -130,6 +137,9 @@ internal class AnimStudioUi(private val a: MainActivity) {
 
         stage.images = images
         stage.state = { el -> AnMath.sample(p.tracks[el.id] ?: emptyList(), p.playheadMs) }
+        stage.timeMs = { p.playheadMs }
+        stage.stateAt = { el, t -> AnMath.sample(p.tracks[el.id] ?: emptyList(), t) }
+        stage.opts = p.opts
         stage.onSelect = { id -> p.selectedId = id; onSelectionChanged() }
         stage.onDragStart = { id -> beginDrag(id) }
         stage.onDrag = { id, dx, dy -> dragTo(id, dx, dy) }
@@ -140,7 +150,7 @@ internal class AnimStudioUi(private val a: MainActivity) {
         playBtn = kit.icon("play", 24f, c.ink, "Putar") { togglePlay() }
         buildTransport()
         column.addView(transport, LinearLayout.LayoutParams(-1, dp(44)))
-        timeline = AnTimelineView(a)
+        timeline = AnTracksView(a)
         column.addView(timeline, LinearLayout.LayoutParams(-1, dp(78)))
 
         buildPanelHost()
@@ -239,6 +249,10 @@ internal class AnimStudioUi(private val a: MainActivity) {
 
     private fun syncDoc() {
         stage.doc = p.doc
+        stage.durationMs = p.durationMs
+        // Tinggi timeline: penggaris + maks. 4 baris layer terlihat (sisanya digulir).
+        val rows = (p.doc?.elements?.size ?: 0).coerceIn(1, 4)
+        timeline.layoutParams = timeline.layoutParams.apply { height = dp(24) + dp(30) * rows + dp(4) }
         if (p.element(p.selectedId) == null) p.selectedId = null
         stage.selectedId = p.selectedId
         p.doc?.let { d -> images.retain(d.elements.map { it.id }.toSet()) }
@@ -266,6 +280,7 @@ internal class AnimStudioUi(private val a: MainActivity) {
     }
 
     private fun changed(rerender: Boolean = true) {
+        stage.durationMs = p.durationMs
         updateChrome()
         stage.invalidate()
         timeline.invalidate()
@@ -448,6 +463,9 @@ internal class AnimStudioUi(private val a: MainActivity) {
             "layer" -> renderLayerPanel()
             "kunci" -> renderKeyPanel()
             "preset" -> renderPresetPanel()
+            "teks" -> renderTextPanel()
+            "grafik" -> renderGraphPanel()
+            "efek" -> renderEffectPanel()
             "durasi" -> renderDurationPanel()
             "ekspor" -> renderExportPanel()
             else -> closePanel()
@@ -497,7 +515,9 @@ internal class AnimStudioUi(private val a: MainActivity) {
                 maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(6), 0, dp(6), 0)
             }, LinearLayout.LayoutParams(0, -2, 1f))
             val n = keysOf(el.id).size
-            row.addView(kit.text(if (n == 0) "diam" else "$n kunci", 11f, if (sel) c.activeInk else c.muted))
+            val o = p.opt(el.id)
+            val tags = listOfNotNull(if (n == 0) "diam" else "$n kunci", if (o.hidden) "sembunyi" else null, if (o.locked) "kunci" else null, o.text?.let { "teks" }, if (o.effects.isNotEmpty()) "${o.effects.size} efek" else null, o.trans?.let { "transisi" })
+            row.addView(kit.text(tags.joinToString(" · "), 11f, if (sel) c.activeInk else c.muted))
             panelBody.addView(row, LinearLayout.LayoutParams(-1, dp(44)).apply { bottomMargin = dp(4) })
         }
         val el = p.element(p.selectedId)
@@ -506,7 +526,122 @@ internal class AnimStudioUi(private val a: MainActivity) {
                 checkpoint(); p.tracks.remove(el.id); changed()
             }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(6) })
         }
-        note("Layer terkunci di Foto Studio tidak bisa diseret di kanvas, tetapi tetap bisa dianimasikan dari panel ini.")
+        if (el != null) renderRangeControls(el)
+        note("Layer terkunci di Foto Studio tidak bisa diseret di kanvas, tetapi tetap bisa dianimasikan dari panel ini. Di timeline: ketuk ikon mata/gembok untuk sembunyi/kunci track, seret ujung bilah untuk rentang aktif.")
+    }
+
+    /** Rentang aktif + sembunyi/kunci layer terpilih (alternatif tombol untuk seret di timeline). */
+    private fun renderRangeControls(el: CsElement) {
+        val o = p.opt(el.id)
+        caption("RENTANG AKTIF · ${AnTiming.fmt(o.inMs)} – ${AnTiming.fmt(o.outOr(p.durationMs))}")
+        val row = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL }
+        row.addView(kit.secondaryButton("Masuk = playhead") { editOpt(el.id) { AnTimeline.withIn(it, p.playheadMs, p.durationMs) } },
+            LinearLayout.LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(6) })
+        row.addView(kit.secondaryButton("Keluar = playhead") { editOpt(el.id) { AnTimeline.withOut(it, p.playheadMs, p.durationMs) } },
+            LinearLayout.LayoutParams(0, dp(40), 1f))
+        panelBody.addView(row)
+        if (o.hasRange(p.durationMs)) {
+            panelBody.addView(kit.secondaryButton("Rentang penuh") { editOpt(el.id) { it.copy(inMs = 0L, outMs = -1L) } },
+                LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(6) })
+        }
+        panelBody.addView(kit.toggleRow("Sembunyikan di animasi", o.hidden) { v -> editOpt(el.id) { it.copy(hidden = v) } },
+            LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(4) })
+        panelBody.addView(kit.toggleRow("Kunci track (tidak bisa diseret)", o.locked) { v -> editOpt(el.id) { it.copy(locked = v) } },
+            LinearLayout.LayoutParams(-1, dp(40)))
+    }
+
+    /** Ubah opsi layer dengan checkpoint undo. */
+    private fun editOpt(id: String, change: (AnLayerOpt) -> AnLayerOpt) {
+        stopPlay()
+        val cur = p.opt(id)
+        val next = change(cur)
+        if (next == cur) return
+        checkpoint()
+        p.setOpt(id, next)
+        changed()
+    }
+
+    private fun textAnimIcon(type: String): String = when (type) {
+        AnTextMath.TYPEWRITER -> "format-text"
+        AnTextMath.FADE -> "opacity"
+        AnTextMath.POP -> "party-popper"
+        AnTextMath.BOUNCE -> "chart-bell-curve"
+        AnTextMath.WAVE -> "sine-wave"
+        AnTextMath.TRACKING -> "format-letter-case"
+        AnTextMath.PATH -> "vector-polyline"
+        AnTextMath.TITLE -> "arrow-up-bold"
+        AnTextMath.SUBTITLE -> "subtitles-outline"
+        else -> "close"
+    }
+
+    /** Animasi teks per huruf untuk layer TEXT terpilih (mulai, lama, intensitas, bentuk jalur). */
+    private fun renderTextPanel() {
+        val el = p.element(p.selectedId)
+        if (el == null || el.type != CsType.TEXT) {
+            panelTitle.text = "Animasi teks"
+            note("Pilih layer teks di kanvas atau panel Layer. Animasi teks berjalan per huruf dan ikut diekspor ke MP4/GIF.")
+            return
+        }
+        val cur = p.opt(el.id).text
+        panelTitle.text = "Teks · ${layerName(el).take(20)}"
+        val tiles = ArrayList<View>()
+        tiles.add(kit.tile("close", "Tanpa", cur == null) { editOpt(el.id) { it.copy(text = null) } })
+        for ((id, label) in AnTextMath.ALL) {
+            tiles.add(kit.tile(textAnimIcon(id), label, cur?.type == id) {
+                editOpt(el.id) { o ->
+                    val base = o.text
+                    // Ganti jenis mempertahankan waktu; baru = mulai di playhead.
+                    o.copy(text = base?.copy(type = id) ?: AnTextAnim(id, startMs = AnTimeline.snap(p.playheadMs).coerceAtMost(p.durationMs), durMs = defaultTextMs(id)))
+                }
+                ensureDurationCovers(el.id)
+            })
+        }
+        for (r in tiles.chunked(4)) {
+            val list = r.toMutableList()
+            while (list.size < 4) list.add(View(a))
+            panelBody.addView(kit.tileRow(list))
+        }
+        if (cur == null) {
+            note("Ketik: huruf muncul satu per satu · Fade/Pop: per huruf · Pantul & Gelombang: gerak vertikal per huruf · Tracking: jarak huruf menyempit · Jalur: teks di lengkung/busur/lingkaran · Judul: naik + tracking · Subjudul: fade-in dari bawah.")
+            return
+        }
+        if (cur.type == AnTextMath.PATH) {
+            caption("BENTUK JALUR")
+            panelBody.addView(kit.segmented(AnTextMath.PATHS, cur.path) { k -> editOpt(el.id) { o -> o.copy(text = o.text?.copy(path = k)) } },
+                LinearLayout.LayoutParams(-1, dp(38)))
+        }
+        fun textSlider(label: String, min: Int, max: Int, value: Int, def: Int, fmt: (Int) -> String, apply: (AnTextAnim, Int) -> AnTextAnim) =
+            panelBody.addView(kit.slider(label, min, max, value.coerceIn(min, max), def, format = fmt, onStart = { stopPlay(); checkpoint() }, onStop = { ensureDurationCovers(el.id); changed() }) { v ->
+                val o = p.opt(el.id)
+                o.text?.let { t -> p.setOpt(el.id, o.copy(text = apply(t, v))) }
+                changed(rerender = false)
+            })
+        textSlider("Mulai", 0, (p.durationMs / 50).toInt(), (cur.startMs / 50).toInt(), 0, { AnTiming.fmt(it * 50L) }) { t, v -> t.copy(startMs = v * 50L) }
+        textSlider("Lama", 0, 200, (cur.durMs / 50).toInt(), (defaultTextMs(cur.type) / 50).toInt(), { String.format(Locale.US, "%.2f s", it * 50 / 1000f) }) { t, v -> t.copy(durMs = v * 50L) }
+        textSlider("Intensitas", 0, 200, (cur.amount * 100).roundToInt(), 100, { "$it%" }) { t, v -> t.copy(amount = v / 100f) }
+        panelBody.addView(kit.secondaryButton("Mulai di playhead (${AnTiming.fmt(p.playheadMs)})") {
+            editOpt(el.id) { o -> o.copy(text = o.text?.copy(startMs = AnTimeline.snap(p.playheadMs).coerceAtMost(p.durationMs))) }
+            ensureDurationCovers(el.id)
+        }, LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(8) })
+        note("Animasi teks digabung dengan keyframe layer (geser/putar/skala/opasitas). Selama animasi teks aktif, miring 3D & mode campur layer tidak diterapkan.")
+    }
+
+    private fun defaultTextMs(type: String): Long = when (type) {
+        AnTextMath.TYPEWRITER, AnTextMath.PATH -> 1_500L
+        AnTextMath.WAVE -> 3_000L
+        AnTextMath.SUBTITLE -> 800L
+        else -> 1_200L
+    }
+
+    /** Perpanjang durasi animasi bila animasi teks melewati akhir. */
+    private fun ensureDurationCovers(id: String) {
+        val t = p.opt(id).text ?: return
+        val end = t.startMs + t.durMs
+        if (end > p.durationMs) {
+            p.durationMs = AnMath.clampDuration(((end + 999) / 1000) * 1000)
+            a.toast("Durasi diperpanjang menjadi ${p.durationMs / 1000} s")
+            changed()
+        }
     }
 
     private fun renderKeyPanel() {
@@ -543,6 +678,10 @@ internal class AnimStudioUi(private val a: MainActivity) {
             editKey(el.id) { it.copy(ease = e) }
             changed()
         }, LinearLayout.LayoutParams(-1, dp(38)))
+        if (keys.size >= 2) {
+            panelBody.addView(kit.secondaryButton("Graph Editor (back, pantul, elastis, pegas, bezier)") { openPanel("grafik") },
+                LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(6) })
+        }
         val row = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL }
         row.addView(kit.secondaryButton(if (idx >= 0) "Hapus keyframe" else "Tambah keyframe") { if (idx >= 0) deleteKeyAtPlayhead() else addKeyAtPlayhead() },
             LinearLayout.LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(6) })
@@ -553,6 +692,246 @@ internal class AnimStudioUi(private val a: MainActivity) {
         }, LinearLayout.LayoutParams(0, dp(40), 1f))
         panelBody.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         note("Nilai adalah offset dari desain asli. Seret objek di kanvas untuk mengatur posisi di playhead. Ketuk angka untuk reset.")
+    }
+
+    // ================================================================== graph editor
+
+
+    /** Segmen (indeks keyframe awal) yang memuat playhead untuk layer [id], atau -1. */
+    private fun segmentAt(id: String): Int {
+        val keys = keysOf(id)
+        if (keys.size < 2) return -1
+        val i = keys.indexOfLast { it.t <= p.playheadMs }
+        return i.coerceIn(0, keys.size - 2)
+    }
+
+    /** Ganti ease keyframe awal segmen [i] (tanpa checkpoint — pemanggil yang mengatur). */
+    private fun setSegEase(id: String, i: Int, ease: String) {
+        val keys = keysOf(id)
+        if (i !in keys.indices) return
+        val e = AnEase.valid(ease)
+        setKeys(id, keys.mapIndexed { j, k -> if (j == i) k.copy(ease = e) else k })
+    }
+
+    private fun easeFamily(e: String): String = e.substringBefore(':')
+
+    private fun renderGraphPanel() {
+        graphView = null
+        val el = p.element(p.selectedId)
+        if (el == null) {
+            panelTitle.text = "Graph Editor"
+            note("Pilih layer yang punya minimal dua keyframe. Graph Editor mengatur kurva easing segmen di playhead.")
+            return
+        }
+        val keys = keysOf(el.id)
+        val i = segmentAt(el.id)
+        panelTitle.text = "Grafik · ${layerName(el).take(20)}"
+        if (i < 0) {
+            note("Layer ini butuh minimal dua keyframe. Tambahkan keyframe di panel Keyframe, lalu kembali ke sini.")
+            return
+        }
+        val k0 = keys[i]
+        val k1 = keys[i + 1]
+        val curve = AnEasing.parse(k0.ease) ?: AnCurve.InOut
+        caption("SEGMEN ${i + 1} → ${i + 2} · ${AnTiming.fmt(k0.t)} – ${AnTiming.fmt(k1.t)} · ${AnEase.label(k0.ease).uppercase(Locale.ROOT)}")
+        val g = AnGraphView(a, c)
+        g.curve = curve
+        g.onDragStart = { stopPlay(); checkpoint() }
+        g.onChange = { b ->
+            setSegEase(el.id, i, AnEasing.format(b))
+            changed(rerender = false)
+        }
+        g.onDragEnd = { changed() }
+        graphView = g
+        panelBody.addView(g, LinearLayout.LayoutParams(-1, dp(190)))
+        panelBody.addView(kit.text("Garis tebal = nilai (0 → 1), garis tipis = kecepatan. Seret dua titik untuk kurva bezier khusus.", 11f, c.muted).apply {
+            setPadding(dp(4), dp(4), dp(4), dp(2))
+        })
+        caption("PRESET")
+        val canon = AnEase.valid(k0.ease)
+        val active = AnEasing.PRESETS.firstOrNull { (key, _) ->
+            if (easeFamily(key) == AnEasing.BEZIER) AnEase.valid(key) == canon else easeFamily(key) == easeFamily(canon)
+        }?.first ?: ""
+        fun pick(key: String) { stopPlay(); checkpoint(); setSegEase(el.id, i, key); changed() }
+        for (row in AnEasing.PRESETS.chunked(5)) {
+            panelBody.addView(kit.segmented(row, active) { pick(it) }, LinearLayout.LayoutParams(-1, dp(38)).apply { bottomMargin = dp(4) })
+        }
+        fun live(label: String, min: Int, max: Int, value: Int, def: Int, fmt: (Int) -> String, make: (Int) -> AnCurve) =
+            panelBody.addView(kit.slider(label, min, max, value.coerceIn(min, max), def, format = fmt, onStart = { stopPlay(); checkpoint() }, onStop = { changed() }) { v ->
+                val c2 = make(v)
+                setSegEase(el.id, i, AnEasing.format(c2))
+                graphView?.let { it.curve = AnEasing.parse(keysOf(el.id).getOrNull(i)?.ease) ?: c2; it.invalidate() }
+                changed(rerender = false)
+            })
+        caption("AKSELERASI")
+        val (ai, ao) = AnEasing.accelOf(curve)
+        var inS = ai
+        var outS = ao
+        live("Ease-in", 0, 100, (ai * 100).roundToInt(), 0, { "$it%" }) { v -> inS = v / 100f; AnEasing.accel(inS, outS) }
+        live("Ease-out", 0, 100, (ao * 100).roundToInt(), 0, { "$it%" }) { v -> outS = v / 100f; AnEasing.accel(inS, outS) }
+        val ov = AnEasing.overshootOf(curve)
+        if (ov != null) {
+            caption("OVERSHOOT")
+            live("Jumlah", 0, 100, (ov * 100).roundToInt(), if (curve is AnCurve.Back) 43 else 29, { "$it%" }) { v -> AnEasing.withOvershoot(curve, v / 100f) }
+        }
+        if (curve is AnCurve.Spring) {
+            caption("PEGAS")
+            var k = curve.stiffness
+            var d = curve.damping
+            live("Kekakuan", 10, 1000, k.roundToInt(), AnEasing.SPRING_K.roundToInt(), { "$it" }) { v -> k = v.toFloat(); AnCurve.Spring(k, d) }
+            live("Redaman", 1, 100, d.roundToInt(), AnEasing.SPRING_D.roundToInt(), { "$it" }) { v -> d = v.toFloat(); AnCurve.Spring(k, d) }
+        }
+        val row = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL }
+        row.addView(kit.secondaryButton("Semua segmen layer") {
+            stopPlay(); checkpoint()
+            val e = keysOf(el.id).getOrNull(i)?.ease ?: AnEase.IN_OUT
+            setKeys(el.id, keysOf(el.id).map { it.copy(ease = e) })
+            changed()
+            a.toast("Kurva diterapkan ke semua segmen")
+        }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(6) })
+        row.addView(kit.secondaryButton("Segmen berikutnya") {
+            val nk = keysOf(el.id).getOrNull(i + 1)
+            if (nk != null && i + 2 < keysOf(el.id).size) seek(nk.t) else a.toast("Ini segmen terakhir")
+        }, LinearLayout.LayoutParams(0, dp(40), 1f))
+        panelBody.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        note("Back/Elastis/Pegas melewati nilai tujuan lalu kembali (overshoot). Opasitas tetap dibatasi 0–100%. Disimpan sebagai: ${keysOf(el.id).getOrNull(i)?.ease ?: canon}")
+    }
+
+    // ================================================================== efek & transisi
+
+
+    private fun effectIcon(type: String): String = when (type) {
+        AnFxMath.MOTION_BLUR -> "motion-play-outline"
+        AnFxMath.PARTICLES -> "creation"
+        AnFxMath.LIGHT -> "white-balance-sunny"
+        AnFxMath.FLASH -> "flash"
+        AnFxMath.SHAKE -> "move-resize"
+        AnFxMath.GLITCH -> "shimmer"
+        AnFxMath.BLUR -> "blur"
+        else -> "auto-fix"
+    }
+
+    private fun editEffect(id: String, index: Int, change: (AnEffect) -> AnEffect) {
+        val o = p.opt(id)
+        if (index !in o.effects.indices) return
+        p.setOpt(id, o.copy(effects = o.effects.mapIndexed { j, e -> if (j == index) change(e) else e }))
+    }
+
+    private fun renderEffectPanel() {
+        val el = p.element(p.selectedId)
+        if (el == null) {
+            panelTitle.text = "Efek"
+            note("Pilih layer di kanvas atau panel Layer. Efek (motion blur, partikel, cahaya, kilat, guncang, glitch, blur) punya waktu mulai, lama & intensitas, dan ikut diekspor ke MP4/GIF.")
+            return
+        }
+        val o = p.opt(el.id)
+        panelTitle.text = "Efek · ${layerName(el).take(20)}"
+        caption("TAMBAH EFEK")
+        val tiles = AnFxMath.ALL.map { (type, label) ->
+            kit.tile(effectIcon(type), label) {
+                if (p.opt(el.id).effects.size >= AnFxMath.MAX_EFFECTS) {
+                    a.toast("Maksimal ${AnFxMath.MAX_EFFECTS} efek per layer")
+                } else {
+                    val start = AnTimeline.snap(p.playheadMs).coerceIn(0L, max(0L, p.durationMs - AnTimeline.MIN_RANGE))
+                    val dur = min(AnFxMath.defaultMs(type), p.durationMs - start).coerceAtLeast(AnTimeline.MIN_RANGE)
+                    val seed = (el.id.hashCode() * 31 + p.opt(el.id).effects.size * 7919 + start.toInt()) and 0x7fffffff
+                    effSel = p.opt(el.id).effects.size
+                    editOpt(el.id) { it.copy(effects = it.effects + AnEffect(type, start, dur, 1f, 0, type == AnFxMath.FLASH, seed)) }
+                }
+            }
+        }
+        for (r in tiles.chunked(4)) {
+            val list = r.toMutableList<View>()
+            while (list.size < 4) list.add(View(a))
+            panelBody.addView(kit.tileRow(list))
+        }
+        if (o.effects.isNotEmpty()) {
+            caption("EFEK LAYER · ${o.effects.size}")
+            effSel = effSel.coerceIn(0, o.effects.size - 1)
+            for ((j, e) in o.effects.withIndex()) {
+                val sel = j == effSel
+                val row = LinearLayout(a).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(8), 0, dp(2), 0)
+                    background = if (sel) c.pressable(c.activeFill, 12) else c.pressable(c.surface2, 12)
+                    isClickable = true
+                    contentDescription = "Pilih efek ${AnFxMath.label(e.type)}"
+                    setOnClickListener { effSel = j; renderPanel("efek") }
+                }
+                val ink = if (sel) c.activeInk else c.ink
+                row.addView(kit.icon(effectIcon(e.type), 18f, ink), LinearLayout.LayoutParams(dp(28), dp(28)))
+                row.addView(kit.text("${AnFxMath.label(e.type)} · ${AnTiming.fmt(e.startMs)} – ${AnTiming.fmt(e.startMs + e.durMs)}", 12.5f, ink).apply {
+                    maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(6), 0, dp(6), 0)
+                }, LinearLayout.LayoutParams(0, -2, 1f))
+                row.addView(kit.icon("delete-outline", 19f, ink, "Hapus efek") {
+                    editOpt(el.id) { it.copy(effects = it.effects.filterIndexed { x, _ -> x != j }) }
+                }, LinearLayout.LayoutParams(dp(40), dp(40)))
+                panelBody.addView(row, LinearLayout.LayoutParams(-1, dp(42)).apply { bottomMargin = dp(4) })
+            }
+            val cur = o.effects[effSel]
+            fun fxSlider(label: String, min: Int, max: Int, value: Int, def: Int, fmt: (Int) -> String, apply: (AnEffect, Int) -> AnEffect) =
+                panelBody.addView(kit.slider(label, min, max, value.coerceIn(min, max), def, format = fmt, onStart = { stopPlay(); checkpoint() }, onStop = { changed() }) { v ->
+                    editEffect(el.id, effSel) { apply(it, v) }
+                    changed(rerender = false)
+                })
+            caption(AnFxMath.label(cur.type).uppercase(Locale.ROOT))
+            fxSlider("Mulai", 0, (p.durationMs / 50).toInt(), (cur.startMs / 50).toInt(), 0, { AnTiming.fmt(it * 50L) }) { e, v -> e.copy(startMs = v * 50L) }
+            fxSlider("Lama", 2, 400, (cur.durMs / 50).toInt(), (AnFxMath.defaultMs(cur.type) / 50).toInt(), { String.format(Locale.US, "%.2f s", it * 50 / 1000f) }) { e, v -> e.copy(durMs = v * 50L) }
+            fxSlider("Intensitas", 0, 200, (cur.amount * 100).roundToInt(), 100, { "$it%" }) { e, v -> e.copy(amount = v / 100f) }
+            fun fxEdit(change: (AnEffect) -> AnEffect) { stopPlay(); checkpoint(); editEffect(el.id, effSel, change); changed() }
+            if (cur.type == AnFxMath.PARTICLES || cur.type == AnFxMath.LIGHT) {
+                val kinds = if (cur.type == AnFxMath.PARTICLES) AnFxMath.PARTICLE_KINDS else AnFxMath.LIGHT_KINDS
+                panelBody.addView(kit.segmented(kinds, cur.variant.toString()) { k -> fxEdit { it.copy(variant = k.toInt()) } },
+                    LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(4) })
+                if (!(cur.type == AnFxMath.LIGHT && cur.variant == 1)) {
+                    panelBody.addView(kit.toggleRow("Seluruh kanvas", cur.global) { v -> fxEdit { it.copy(global = v) } },
+                        LinearLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(4) })
+                }
+            }
+            val row = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL }
+            row.addView(kit.secondaryButton("Mulai di playhead") {
+                fxEdit { it.copy(startMs = AnTimeline.snap(p.playheadMs).coerceIn(0L, p.durationMs)) }
+            }, LinearLayout.LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(6) })
+            row.addView(kit.secondaryButton("Acak pola") { fxEdit { it.copy(seed = (it.seed * 1103515245 + 12345) and 0x7fffffff) } },
+                LinearLayout.LayoutParams(0, dp(40), 1f))
+            panelBody.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+            note(when (cur.type) {
+                AnFxMath.MOTION_BLUR -> "Motion blur hanya terlihat saat layer bergerak (dari keyframe)."
+                AnFxMath.SHAKE -> "Guncang menggeser seluruh kanvas (kanvas sedikit diperbesar agar tepi tidak terbuka)."
+                AnFxMath.FLASH -> "Kilat putih menutup seluruh kanvas."
+                AnFxMath.BLUR -> "Blur naik ke puncak di tengah rentang lalu kembali tajam."
+                else -> "Efek deterministik: pratinjau dan hasil ekspor sama."
+            })
+        }
+        renderTransitionControls(el)
+    }
+
+    private fun renderTransitionControls(el: CsElement) {
+        val o = p.opt(el.id)
+        caption("TRANSISI MASUK")
+        val opts = listOf("none" to "Tanpa") + AnTransMath.ALL
+        panelBody.addView(kit.segmented(opts.take(3), o.trans?.type ?: "none") { k -> setTrans(el.id, k) }, LinearLayout.LayoutParams(-1, dp(38)).apply { bottomMargin = dp(4) })
+        panelBody.addView(kit.segmented(opts.drop(3), o.trans?.type ?: "none") { k -> setTrans(el.id, k) }, LinearLayout.LayoutParams(-1, dp(38)))
+        val tr = o.trans
+        if (tr != null) {
+            panelBody.addView(kit.slider("Lama", 2, 60, (tr.durMs / 50).toInt(), 12, format = { String.format(Locale.US, "%.2f s", it * 50 / 1000f) },
+                onStart = { stopPlay(); checkpoint() }, onStop = { changed() }) { v ->
+                val cur = p.opt(el.id)
+                cur.trans?.let { p.setOpt(el.id, cur.copy(trans = it.copy(durMs = v * 50L))) }
+                changed(rerender = false)
+            })
+            val pr = AnTransMath.pairs(p.doc?.elements?.filter { it.visible }?.map { it.id } ?: emptyList(), p.opts, p.durationMs).firstOrNull { it.toId == el.id }
+            val from = pr?.fromId?.let { p.element(it) }
+            note(if (from != null) "Bersambung dengan \"${layerName(from).take(20)}\" yang keluar di ${AnTiming.fmt(o.inMs)}."
+            else "Belum ada layer yang keluar di titik masuk (${AnTiming.fmt(o.inMs)}) — transisi berlaku sebagai animasi masuk saja. Atur titik keluar layer lain = titik masuk layer ini (panel Layer / seret ujung bilah timeline).")
+        } else {
+            note("Transisi berjalan di titik masuk layer ini. Bila layer lain keluar di titik yang sama (±150 ms), keduanya dipadukan (crossfade, geser, zoom, wipe, blur).")
+        }
+    }
+
+    private fun setTrans(id: String, k: String) {
+        editOpt(id) { it.copy(trans = if (k == "none") null else AnTransition(k, it.trans?.durMs ?: 600L)) }
     }
 
     private fun renderPresetPanel() {
@@ -597,7 +976,7 @@ internal class AnimStudioUi(private val a: MainActivity) {
         var lastEnd = start + dur
         for ((i, el) in targets.withIndex()) {
             val s = start + if (presetAll) i * 180L else 0L
-            val k = AnPresets.keys(id, s, dur, el.x, el.y, el.w, el.h, d.w.toFloat(), d.h.toFloat())
+            val k = AnPresets.keys(id, s, dur, el.x, el.y, el.w, el.h, d.w.toFloat(), d.h.toFloat(), el.depth)
             setKeys(el.id, AnPresets.applyTo(keysOf(el.id), k))
             lastEnd = max(lastEnd, s + dur)
         }
@@ -634,6 +1013,11 @@ internal class AnimStudioUi(private val a: MainActivity) {
     private fun setDuration(ms: Long) {
         p.durationMs = AnMath.clampDuration(ms)
         for (id in p.tracks.keys.toList()) setKeys(id, AnMath.clip(keysOf(id), p.durationMs))
+        // Rentang aktif yang melewati durasi baru dipangkas (out di akhir = ikut durasi).
+        for ((id, o) in p.opts.entries.toList()) {
+            if (o.outMs >= p.durationMs) p.setOpt(id, o.copy(outMs = -1L))
+            if (p.opt(id).inMs >= p.durationMs - AnTimeline.MIN_RANGE) p.setOpt(id, p.opt(id).copy(inMs = 0L))
+        }
         if (p.playheadMs > p.durationMs) p.playheadMs = p.durationMs
     }
 
@@ -691,6 +1075,7 @@ internal class AnimStudioUi(private val a: MainActivity) {
         if (p.job != null) { a.toast("Ekspor lain sedang berjalan"); return }
         stopPlay()
         val tracks = HashMap(p.tracks)
+        val opts = HashMap(p.opts)
         val dur = p.durationMs
         val name = p.name
         val ctx = a.applicationContext
@@ -710,14 +1095,14 @@ internal class AnimStudioUi(private val a: MainActivity) {
                     "gif" -> {
                         val (w, h) = gifSize
                         val imgs = AnDraw.exportImages(d, w / d.w.toFloat(), zoom, cap = 1024)
-                        val src = AnDocSource(ctx, d, tracks, dur, gifFps, w, h, imgs, background = !gifTransparent)
+                        val src = AnDocSource(ctx, d, tracks, dur, gifFps, w, h, imgs, background = !gifTransparent, opts = opts)
                         val f = AnShare.movieFile(ctx, name, "gif")
                         AnEncode.gif(src, f, { job.cancel.get() }) { pr -> job.progress = pr; notify() }
                         AnShare.publish(ctx, f, "image/gif")
                     }
                     else -> {
                         val imgs = AnDraw.exportImages(d, vw / d.w.toFloat(), zoom)
-                        val src = AnDocSource(ctx, d, tracks, dur, AnProject.FPS, vw, vh, imgs, background = true)
+                        val src = AnDocSource(ctx, d, tracks, dur, AnProject.FPS, vw, vh, imgs, background = true, opts = opts)
                         val f = if (kind == "ve") File(AnEncode.veMediaDir(ctx), "anim_${CsStore.safeName(name)}_${System.currentTimeMillis()}.mp4")
                         else AnShare.movieFile(ctx, name, "mp4")
                         AnEncode.mp4(src, f, { job.cancel.get() }) { pr -> job.progress = pr; notify() }
@@ -725,6 +1110,7 @@ internal class AnimStudioUi(private val a: MainActivity) {
                     }
                 }
             }
+            AnFxDraw.releaseThread()
             main.post {
                 p.job = null
                 if (alive) hideProgress()
@@ -802,6 +1188,9 @@ internal class AnimStudioUi(private val a: MainActivity) {
         cell("layer", "layers-outline", "Layer") { togglePanel("layer") }
         cell("kunci", "rhombus-outline", "Keyframe") { togglePanel("kunci") }
         cell("preset", "animation-play-outline", "Preset") { togglePanel("preset") }
+        cell("teks", "format-text", "Teks") { togglePanel("teks") }
+        cell("grafik", "chart-bell-curve", "Grafik") { togglePanel("grafik") }
+        cell("efek", "auto-fix", "Efek") { togglePanel("efek") }
         cell("durasi", "timer-outline", "Durasi") { togglePanel("durasi") }
         cell("ekspor", "export-variant", "Ekspor") { togglePanel("ekspor") }
         renderDock()
@@ -850,14 +1239,15 @@ internal class AnimStudioUi(private val a: MainActivity) {
             "Ganti nama…" to { askName("Nama animasi", p.name) { n -> p.name = n; changed() } }
         )
         if (p.keyCount() > 0) items.add("Hapus semua keyframe" to { checkpoint(); p.tracks.clear(); changed() })
+        if (p.opts.isNotEmpty()) items.add("Reset rentang, sembunyi/kunci & animasi teks" to { checkpoint(); p.opts.clear(); changed() })
         items.add("Bantuan" to { showHelp() })
         kit.menu(p.name, items)
     }
 
-    private fun replaceDoc(d: CsDocData, name: String, keep: Map<String, List<AnKey>> = emptyMap(), duration: Long = 5_000L, path: String? = null) {
+    private fun replaceDoc(d: CsDocData, name: String, keep: Map<String, List<AnKey>> = emptyMap(), duration: Long = 5_000L, path: String? = null, opts: Map<String, AnLayerOpt> = emptyMap()) {
         stopPlay()
         val stashed = AnStore.stashIfNeeded(a)
-        p.setDoc(d, name, keep, duration, path)
+        p.setDoc(d, name, keep, duration, path, opts)
         dismissOverlay()
         syncDoc()
         AnStore.autosave(a)
@@ -904,7 +1294,7 @@ internal class AnimStudioUi(private val a: MainActivity) {
             .setItems(files.map { "${it.nameWithoutExtension}\n${fmt.format(java.util.Date(it.lastModified()))}" }.toTypedArray()) { _, i ->
                 val l = runCatching { AnStore.parse(a, files[i].readText()) }.getOrNull()
                 if (l == null) a.toast("Proyek rusak atau tidak bisa dibaca")
-                else replaceDoc(l.doc, l.name, l.tracks, l.durationMs, files[i].absolutePath)
+                else replaceDoc(l.doc, l.name, l.tracks, l.durationMs, files[i].absolutePath, l.opts)
             }
             .setNeutralButton("Hapus…") { _, _ -> deleteAnimProjects(files) }
             .setNegativeButton("Batal", null).show()
@@ -999,105 +1389,371 @@ internal class AnimStudioUi(private val a: MainActivity) {
 
     // ================================================================== timeline
 
-    /** Penggaris waktu + playhead + keyframe layer terpilih (belah ketupat) dan semua layer (garis). */
-    private inner class AnTimelineView(ctx: Context) : View(ctx) {
+    /**
+     * Timeline multi-layer: penggaris + satu baris per layer (atas = layer teratas). Kolom kiri:
+     * mata (sembunyi), gembok (kunci), nama layer; di penggaris kolom kiri: tombol zoom −/+.
+     * Area waktu: seret penggaris = playhead; seret belah ketupat = pindah keyframe (snap 50 ms);
+     * seret ujung bilah = rentang aktif in/out; seret area kosong = gulir; cubit = zoom.
+     */
+    private inner class AnTracksView(ctx: Context) : View(ctx) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(9).toFloat(); color = c.muted }
+        private val text = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(9).toFloat(); color = c.muted }
+        private val nameText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(11).toFloat(); color = c.ink }
+        private val glyph = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = dp(15).toFloat(); textAlign = Paint.Align.CENTER
+            PeLayerRender.mdi(ctx)?.let { typeface = it }
+        }
         private val diamond = Path()
-        private val pad = dp(16).toFloat()
+        private val headerW = dp(96).toFloat()
+        private val rulerH = dp(24).toFloat()
+        private val rowH = dp(30).toFloat()
+        private val padL = dp(10).toFloat()
+        private val padR = dp(14).toFloat()
+        private var zoom = 1f
+        private var scrollXPx = 0f
+        private var scrollYPx = 0f
+
+        // Gestur
+        private val modeNone = 0
+        private val modeScrub = 1
+        private val modeKey = 2
+        private val modeIn = 3
+        private val modeOut = 4
+        private val modePan = 5
+        private val modeHeader = 6
+        private var mode = modeNone
+        private var downX = 0f
+        private var downY = 0f
+        private var lastX = 0f
+        private var lastY = 0f
+        private var moved = false
+        private var dragId: String? = null
+        private var dragKeys: List<AnKey> = emptyList()
+        private var dragIndex = -1
+        private var dragOpt: AnLayerOpt = AnLayerOpt.DEFAULT
+        private var dragLastT = -1L
+        private var checkpointed = false
+        private val slop = dp(6).toFloat()
+
+        private val scaler = ScaleGestureDetector(ctx, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                zoomAround(zoom * detector.scaleFactor, detector.focusX)
+                return true
+            }
+        })
 
         init {
             setBackgroundColor(c.surface)
-            contentDescription = "Timeline animasi"
+            contentDescription = "Timeline animasi multi-layer"
         }
 
-        private fun xOf(t: Long): Float = pad + (width - pad * 2) * (t.toFloat() / p.durationMs.coerceAtLeast(1L))
-        private fun tOf(x: Float): Long = ((x - pad) / (width - pad * 2).coerceAtLeast(1f) * p.durationMs).roundToLong()
+        private fun rows(): List<CsElement> = p.doc?.elements?.asReversed() ?: emptyList()
+        private fun areaW(): Float = (width - headerW - padL - padR).coerceAtLeast(1f)
+        private fun pxPerMs(): Float = AnTimeline.pxPerMs(areaW(), p.durationMs, zoom)
+        private fun maxScrollX(): Float = max(0f, p.durationMs * pxPerMs() - areaW())
+        private fun maxScrollY(): Float = max(0f, rows().size * rowH - (height - rulerH))
+        private fun xOf(t: Long): Float = headerW + padL + t * pxPerMs() - scrollXPx
+        private fun tOf(x: Float): Long = ((x - headerW - padL + scrollXPx) / pxPerMs()).roundToLong().coerceIn(0L, p.durationMs)
+        private fun rowAt(y: Float): Int = if (y < rulerH) -1 else ((y - rulerH + scrollYPx) / rowH).toInt()
+        private fun rowTop(i: Int): Float = rulerH + i * rowH - scrollYPx
+
+        private fun clampScroll() {
+            scrollXPx = scrollXPx.coerceIn(0f, maxScrollX())
+            scrollYPx = scrollYPx.coerceIn(0f, maxScrollY())
+        }
+
+        /** Zoom dengan waktu di bawah [focusX] tetap di tempat. */
+        fun zoomAround(z: Float, focusX: Float) {
+            val fx = focusX.coerceIn(headerW + padL, width - padR)
+            val tf = (fx - headerW - padL + scrollXPx) / pxPerMs()
+            zoom = z.coerceIn(1f, 40f)
+            scrollXPx = tf * pxPerMs() - (fx - headerW - padL)
+            clampScroll()
+            invalidate()
+        }
+
+        /** Gulir agar playhead terlihat (mis. saat diputar). */
+        private fun followPlayhead() {
+            val x = xOf(p.playheadMs)
+            if (x < headerW + padL) scrollXPx -= headerW + padL - x
+            else if (x > width - padR) scrollXPx += x - (width - padR)
+            clampScroll()
+        }
+
+        private fun drawGlyph(canvas: Canvas, name: String, x: Float, cy: Float, color: Int) {
+            glyph.color = color
+            val fm = glyph.fontMetrics
+            canvas.drawText(MdiGlyphs.glyph(name), x, cy - (fm.ascent + fm.descent) / 2f, glyph)
+        }
+
+        private fun drawDiamond(canvas: Canvas, x: Float, cy: Float, r: Float) {
+            diamond.reset()
+            diamond.moveTo(x, cy - r); diamond.lineTo(x + r, cy); diamond.lineTo(x, cy + r); diamond.lineTo(x - r, cy); diamond.close()
+            canvas.drawPath(diamond, paint)
+        }
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
+            val d = p.doc
+            clampScroll()
+            if (playing) followPlayhead()
             val dur = p.durationMs.coerceAtLeast(1L)
-            val rulerH = dp(20).toFloat()
+            val w = width.toFloat()
+            val h = height.toFloat()
+            paint.style = Paint.Style.FILL
+            // ---- baris layer
+            canvas.save()
+            canvas.clipRect(0f, rulerH, w, h)
+            val list = rows()
+            for ((i, el) in list.withIndex()) {
+                val top = rowTop(i)
+                if (top > h || top + rowH < rulerH) continue
+                val cy = top + rowH / 2f
+                val o = p.opt(el.id)
+                val sel = el.id == p.selectedId
+                val dim = o.hidden || !el.visible
+                if (sel) {
+                    paint.color = c.surface2
+                    canvas.drawRect(0f, top, w, top + rowH, paint)
+                }
+                paint.color = c.stroke
+                paint.strokeWidth = 1f
+                canvas.drawLine(0f, top + rowH, w, top + rowH, paint)
+                // Kolom kiri: mata, gembok, nama.
+                drawGlyph(canvas, if (o.hidden) "eye-off-outline" else "eye-outline", dp(14).toFloat(), cy, if (o.hidden) c.muted else c.ink)
+                drawGlyph(canvas, if (o.locked) "lock-outline" else "lock-open-outline", dp(36).toFloat(), cy, if (o.locked) c.ink else c.muted)
+                nameText.color = if (dim) c.muted else c.ink
+                nameText.isFakeBoldText = sel
+                val nm = TextUtils.ellipsize(layerName(el), nameText, headerW - dp(52), TextUtils.TruncateAt.END)
+                canvas.drawText(nm, 0, nm.length, dp(50).toFloat(), cy + dp(4), nameText)
+                // Area waktu.
+                canvas.save()
+                canvas.clipRect(headerW, top, w, top + rowH)
+                val x0 = xOf(o.inMs)
+                val x1 = xOf(o.outOr(dur))
+                paint.style = Paint.Style.FILL
+                paint.color = c.stroke
+                paint.alpha = if (dim) 90 else 255
+                canvas.drawRoundRect(x0, cy - dp(9), x1, cy + dp(9), dp(5).toFloat(), dp(5).toFloat(), paint)
+                // Pegangan rentang (in/out).
+                paint.color = if (o.locked) c.muted else c.ink
+                paint.alpha = if (dim) 120 else 255
+                canvas.drawRoundRect(x0, cy - dp(9), x0 + dp(4), cy + dp(9), dp(2).toFloat(), dp(2).toFloat(), paint)
+                canvas.drawRoundRect(x1 - dp(4), cy - dp(9), x1, cy + dp(9), dp(2).toFloat(), dp(2).toFloat(), paint)
+                // Rentang animasi teks (garis tipis di bawah bilah).
+                o.text?.let { ta ->
+                    paint.color = c.ink
+                    paint.alpha = 150
+                    canvas.drawRect(xOf(ta.startMs), cy + dp(10), xOf(min(dur, ta.startMs + ta.durMs)).coerceAtLeast(xOf(ta.startMs) + dp(2)), cy + dp(12), paint)
+                }
+                val keys = p.tracks[el.id] ?: emptyList()
+                if (keys.size >= 2) {
+                    paint.color = c.muted
+                    paint.alpha = if (dim) 120 else 255
+                    paint.strokeWidth = dp(2).toFloat()
+                    canvas.drawLine(xOf(keys.first().t), cy, xOf(keys.last().t), cy, paint)
+                }
+                for (k in keys) {
+                    val onHead = sel && abs(k.t - p.playheadMs) <= frameTol
+                    paint.style = Paint.Style.FILL
+                    paint.color = if (onHead) c.activeFill else c.ink
+                    paint.alpha = if (dim) 120 else 255
+                    drawDiamond(canvas, xOf(k.t), cy, dp(if (sel) 6 else 5).toFloat())
+                    if (onHead) {
+                        paint.style = Paint.Style.STROKE
+                        paint.strokeWidth = dp(2).toFloat()
+                        paint.color = c.surface
+                        drawDiamond(canvas, xOf(k.t), cy, dp(6).toFloat())
+                        paint.style = Paint.Style.FILL
+                    }
+                }
+                paint.alpha = 255
+                canvas.restore()
+            }
+            if (d == null || list.isEmpty()) canvas.drawText("Belum ada layer", headerW + padL, rulerH + dp(18), text)
+            canvas.restore()
+            // ---- penggaris
+            paint.style = Paint.Style.FILL
+            paint.color = c.surface
+            canvas.drawRect(0f, 0f, w, rulerH, paint)
             paint.color = c.stroke
             paint.strokeWidth = 1f
-            canvas.drawLine(0f, rulerH, width.toFloat(), rulerH, paint)
-            // Detik: label tiap 1/2/5/10 s sesuai kerapatan.
-            val pxPerS = (width - pad * 2) / (dur / 1000f)
-            val step = when { pxPerS >= dp(40) -> 1; pxPerS >= dp(20) -> 2; pxPerS >= dp(8) -> 5; else -> 10 }
-            var s = 0
-            while (s * 1000L <= dur) {
-                val x = xOf(s * 1000L)
+            canvas.drawLine(0f, rulerH, w, rulerH, paint)
+            canvas.drawLine(headerW, 0f, headerW, h, paint)
+            drawGlyph(canvas, "magnify-minus-outline", dp(20).toFloat(), rulerH / 2f, if (zoom > 1f) c.ink else c.muted)
+            drawGlyph(canvas, "magnify-plus-outline", dp(48).toFloat(), rulerH / 2f, if (zoom < 40f) c.ink else c.muted)
+            canvas.drawText("${(zoom * 10).roundToInt() / 10f}×", dp(64).toFloat(), rulerH / 2f + dp(3), text)
+            canvas.save()
+            canvas.clipRect(headerW, 0f, w, h)
+            // Label tiap 0,1/0,5/1/2/5/10 s sesuai kerapatan; garis kecil tiap langkah.
+            val pxPerS = pxPerMs() * 1000f
+            val stepMs = when {
+                pxPerS >= dp(400) -> 100L; pxPerS >= dp(120) -> 500L; pxPerS >= dp(40) -> 1000L
+                pxPerS >= dp(20) -> 2000L; pxPerS >= dp(8) -> 5000L; else -> 10_000L
+            }
+            val tick = if (stepMs <= 500L) stepMs / 5 else stepMs / 2
+            var tt = (tOf(headerW) / tick) * tick
+            while (tt <= dur) {
+                val x = xOf(tt)
+                if (x > w) break
                 paint.color = c.muted
-                canvas.drawLine(x, rulerH - dp(6), x, rulerH, paint)
-                if (s % step == 0) canvas.drawText("${s}s", x + dp(2), rulerH - dp(8), text)
-                s++
-            }
-            val laneY = rulerH + dp(20)
-            val allY = rulerH + dp(44)
-            paint.color = c.surface2
-            canvas.drawRect(pad, laneY - dp(11), width - pad, laneY + dp(11), paint)
-            canvas.drawRect(pad, allY - dp(6), width - pad, allY + dp(6), paint)
-            // Semua layer: garis kecil.
-            paint.color = c.muted
-            paint.strokeWidth = dp(2).toFloat()
-            for ((id, keys) in p.tracks) {
-                if (id == p.selectedId) continue
-                for (k in keys) { val x = xOf(k.t); canvas.drawLine(x, allY - dp(5), x, allY + dp(5), paint) }
-            }
-            // Layer terpilih: belah ketupat + garis penghubung.
-            val sel = p.selectedId?.let { p.tracks[it] } ?: emptyList()
-            if (sel.size >= 2) {
-                paint.color = c.muted
-                paint.strokeWidth = dp(2).toFloat()
-                canvas.drawLine(xOf(sel.first().t), laneY, xOf(sel.last().t), laneY, paint)
-            }
-            paint.style = Paint.Style.FILL
-            for (k in sel) {
-                val x = xOf(k.t)
-                val r = dp(7).toFloat()
-                diamond.reset()
-                diamond.moveTo(x, laneY - r); diamond.lineTo(x + r, laneY); diamond.lineTo(x, laneY + r); diamond.lineTo(x - r, laneY); diamond.close()
-                val onHead = abs(k.t - p.playheadMs) <= frameTol
-                paint.color = if (onHead) c.activeFill else c.ink
-                canvas.drawPath(diamond, paint)
-                if (onHead) {
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = dp(2).toFloat()
-                    paint.color = c.surface
-                    canvas.drawPath(diamond, paint)
-                    paint.style = Paint.Style.FILL
-                }
-            }
-            if (p.selectedId == null) {
-                canvas.drawText("Pilih layer untuk melihat keyframe-nya", pad + dp(6), laneY + dp(3), text)
+                val major = tt % stepMs == 0L
+                canvas.drawLine(x, rulerH - dp(if (major) 7 else 3), x, rulerH, paint)
+                if (major) canvas.drawText(if (stepMs < 1000L) String.format(Locale.US, "%.1fs", tt / 1000f) else "${tt / 1000}s", x + dp(2), rulerH - dp(9), text)
+                tt += tick
             }
             // Playhead
             val px = xOf(p.playheadMs)
             paint.color = c.ink
             paint.strokeWidth = dp(2).toFloat()
-            canvas.drawLine(px, 0f, px, height.toFloat(), paint)
+            canvas.drawLine(px, 0f, px, h, paint)
             paint.style = Paint.Style.FILL
             canvas.drawCircle(px, dp(4).toFloat(), dp(4).toFloat(), paint)
+            canvas.restore()
+        }
+
+        /** Keyframe terdekat pada baris [i] dalam radius sentuh: indeks atau −1. */
+        private fun keyHit(el: CsElement, x: Float): Int {
+            val keys = p.tracks[el.id] ?: return -1
+            var best = -1
+            var bestD = dp(14).toFloat()
+            for ((k, key) in keys.withIndex()) {
+                val dd = abs(xOf(key.t) - x)
+                if (dd <= bestD) { best = k; bestD = dd }
+            }
+            return best
+        }
+
+        private fun tick() { performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK) }
+
+        private fun startDragCheckpoint() {
+            if (!checkpointed) { stopPlay(); checkpoint(); checkpointed = true }
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             if (p.doc == null) return false
+            scaler.onTouchEvent(event)
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     stopPlay()
                     parent?.requestDisallowInterceptTouchEvent(true)
-                    // Ketuk dekat belah ketupat = lompat tepat ke keyframe itu.
-                    val sel = p.selectedId?.let { p.tracks[it] } ?: emptyList()
-                    val near = sel.minByOrNull { abs(xOf(it.t) - event.x) }
-                    if (near != null && abs(xOf(near.t) - event.x) <= dp(12)) seek(near.t, rerender = false)
-                    else seek(tOf(event.x), rerender = false)
+                    downX = event.x; downY = event.y; lastX = event.x; lastY = event.y
+                    moved = false
+                    checkpointed = false
+                    dragId = null
+                    dragIndex = -1
+                    dragLastT = -1L
+                    val list = rows()
+                    val ri = rowAt(event.y)
+                    mode = when {
+                        event.x < headerW -> modeHeader
+                        ri < 0 -> { seek(tOf(event.x), rerender = false); modeScrub }
+                        ri >= list.size -> modePan
+                        else -> {
+                            val el = list[ri]
+                            val o = p.opt(el.id)
+                            dragId = el.id
+                            dragOpt = o
+                            val k = keyHit(el, event.x)
+                            when {
+                                k >= 0 -> { dragKeys = p.tracks[el.id] ?: emptyList(); dragIndex = k; modeKey }
+                                abs(event.x - xOf(o.inMs)) <= dp(10) -> modeIn
+                                abs(event.x - xOf(o.outOr(p.durationMs))) <= dp(10) -> modeOut
+                                else -> modePan
+                            }
+                        }
+                    }
                 }
-                MotionEvent.ACTION_MOVE -> seek(tOf(event.x), rerender = false)
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (panelKey == "kunci" || panelKey == "preset") renderPanel(panelKey!!)
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    // Dua jari = zoom: batalkan seret yang sedang berjalan.
+                    if (checkpointed) changed()
+                    mode = modeNone
+                    moved = true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (event.pointerCount > 1 || mode == modeNone) return true
+                    if (!moved && abs(event.x - downX) + abs(event.y - downY) > slop) moved = true
+                    if (!moved) return true
+                    val id = dragId
+                    val locked = id != null && p.opt(id).locked
+                    if (locked && (mode == modeKey || mode == modeIn || mode == modeOut)) {
+                        a.toast("Track terkunci — ketuk ikon gembok untuk membuka")
+                        mode = modePan
+                    }
+                    when (mode) {
+                        modeScrub -> seek(tOf(event.x), rerender = false)
+                        modeKey -> if (id != null) {
+                            val next = AnTimeline.moveKey(dragKeys, dragIndex, tOf(event.x), p.durationMs)
+                            val nt = AnTimeline.snap(tOf(event.x)).coerceIn(0L, p.durationMs)
+                            if (next != null && nt != dragLastT) {
+                                startDragCheckpoint()
+                                setKeys(id, next)
+                                dragLastT = nt
+                                tick()
+                                seek(nt, rerender = false)
+                                updateChrome()
+                            }
+                        }
+                        modeIn, modeOut -> if (id != null) {
+                            val n = if (mode == modeIn) AnTimeline.withIn(dragOpt, tOf(event.x), p.durationMs)
+                            else AnTimeline.withOut(dragOpt, tOf(event.x), p.durationMs)
+                            val nt = if (mode == modeIn) n.inMs else n.outOr(p.durationMs)
+                            if (nt != dragLastT) {
+                                startDragCheckpoint()
+                                p.setOpt(id, n)
+                                dragLastT = nt
+                                tick()
+                                seek(nt, rerender = false)
+                            }
+                        }
+                        modePan, modeHeader -> {
+                            if (mode == modePan) scrollXPx -= event.x - lastX
+                            scrollYPx -= event.y - lastY
+                            clampScroll()
+                            invalidate()
+                        }
+                    }
+                    lastX = event.x; lastY = event.y
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (!moved) onTap(event.x, event.y)
+                    else if (checkpointed) changed()
+                    else if (panelKey == "kunci" || panelKey == "preset") renderPanel(panelKey!!)
+                    mode = modeNone
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    if (checkpointed) changed()
+                    mode = modeNone
                 }
             }
             return true
+        }
+
+        private fun onTap(x: Float, y: Float) {
+            val list = rows()
+            val ri = rowAt(y)
+            if (ri < 0) {
+                if (x < headerW) {
+                    if (x < dp(34)) zoomAround(zoom / 1.6f, (headerW + width) / 2f)
+                    else if (x < dp(62)) zoomAround(zoom * 1.6f, xOf(p.playheadMs))
+                } else if (panelKey == "kunci" || panelKey == "preset") renderPanel(panelKey!!)
+                return
+            }
+            if (ri >= list.size) return
+            val el = list[ri]
+            if (x < headerW) {
+                when {
+                    x < dp(25) -> { editOpt(el.id) { it.copy(hidden = !it.hidden) }; tick() }
+                    x < dp(47) -> { editOpt(el.id) { it.copy(locked = !it.locked) }; tick() }
+                    else -> { p.selectedId = el.id; onSelectionChanged() }
+                }
+                return
+            }
+            // Ketuk dekat belah ketupat = lompat tepat ke keyframe itu; selain itu pilih layer + geser playhead.
+            val k = keyHit(el, x)
+            val keys = p.tracks[el.id] ?: emptyList()
+            if (p.selectedId != el.id) { p.selectedId = el.id; onSelectionChanged() }
+            seek(if (k >= 0) keys[k].t else tOf(x))
         }
     }
 }

@@ -90,8 +90,8 @@ class AnimCoreTest {
             assertEquals(id, 900L, k.last().t)
             assertEquals(id, AnState.IDENTITY, AnMath.sample(k, 900))
             assertEquals(id, AnState.IDENTITY, AnMath.sample(k, 5000))
-            val start = AnMath.sample(k, 0)
-            assertTrue(id, !start.isIdentity())
+            // Parallax adalah gerak ayun: mulai dan selesai di desain, jadi tidak disembunyikan saat mulai.
+            if (id != "parallax") assertTrue(id, !AnMath.sample(k, 0).isIdentity())
         }
         // Masuk kiri: objek sepenuhnya di luar tepi kiri saat mulai.
         val l = AnMath.sample(AnPresets.keys("slide_l", 0, 700, 100f, 50f, 300f, 200f, 1280f, 720f), 0)
@@ -444,5 +444,22 @@ class AnimCoreTest {
         assertEquals(1f, b[1].opacity, eps)
         assertEquals(AnEase.IN_OUT, b[1].ease)
         assertTrue(AnCodec.decodeTracks(null).isEmpty())
+    }
+
+    @Test
+    fun parallaxPresetStartsAndEndsAtDesign() {
+        val k = AnPresets.keys("parallax", 0L, 2000L, 0f, 0f, 100f, 100f, 1000f, 1000f, 1f)
+        assertEquals(0f, k.first().dx, 0.001f)
+        assertEquals(0f, k.last().dx, 0.001f)
+        assertTrue(k.any { it.dx > 0f })
+        assertTrue(k.any { it.dx < 0f })
+    }
+
+    @Test
+    fun parallaxDeeperLayersMoveFurther() {
+        val near = AnPresets.keys("parallax", 0L, 2000L, 0f, 0f, 100f, 100f, 1000f, 1000f, 1f)
+        val far = AnPresets.keys("parallax", 0L, 2000L, 0f, 0f, 100f, 100f, 1000f, 1000f, 0f)
+        val amp = { ks: List<AnKey> -> ks.maxOf { Math.abs(it.dx) } }
+        assertTrue(amp(near) > amp(far))
     }
 }

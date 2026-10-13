@@ -7,13 +7,15 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
- * Foto Studio — satu halaman untuk Desain (foto · desain · hapus latar) dan Animasi (keyframe · MP4/GIF).
+ * Foto Studio — satu halaman untuk Desain (foto · desain · hapus latar), Animasi (keyframe · MP4/GIF)
+ * dan Potong (potong manual karakter ke layer transparan).
  * Ganti mode lewat tab di atas tanpa pindah halaman; state proyek ada di CsProject / AnProject (singleton),
  * jadi UI mode lama cukup dilepas (autosave jalan lewat detach listener) dan UI mode baru dibuat.
  */
 internal object FotoStudioState {
     const val DESAIN = "desain"
     const val ANIMASI = "animasi"
+    const val POTONG = "potong"
     var mode = DESAIN
 }
 
@@ -41,7 +43,7 @@ internal class FotoStudioHost(private val a: MainActivity, private var entry: Cs
 
     private fun renderTabs() {
         tabs.removeAllViews()
-        for ((key, label) in listOf(FotoStudioState.DESAIN to "Desain", FotoStudioState.ANIMASI to "Animasi")) {
+        for ((key, label) in listOf(FotoStudioState.DESAIN to "Desain", FotoStudioState.ANIMASI to "Animasi", FotoStudioState.POTONG to "Potong")) {
             val active = key == FotoStudioState.mode
             tabs.addView(TextView(a).apply {
                 text = label
@@ -63,7 +65,12 @@ internal class FotoStudioHost(private val a: MainActivity, private var entry: Cs
         FotoStudioState.mode = mode
         renderTabs()
         body.removeAllViews()
-        val child = if (mode == FotoStudioState.ANIMASI) AnimStudioUi(a).root else CreativeStudioUi(a, entry).root
+        val child = when (mode) {
+            FotoStudioState.ANIMASI -> AnimStudioUi(a).root
+            // Potong Manual menyimpan otomatis saat dilepas; "Kirim ke Desain" pindah ke tab Desain.
+            FotoStudioState.POTONG -> CutoutStudioUi(a) { show(FotoStudioState.DESAIN) }.root
+            else -> CreativeStudioUi(a, entry).root
+        }
         entry = CsToolIds.Entry.DEFAULT
         body.addView(child, FrameLayout.LayoutParams(-1, -1))
     }
@@ -80,7 +87,7 @@ internal class FotoStudioHost(private val a: MainActivity, private var entry: Cs
                 AnStore.stashIfNeeded(a)?.let { a.toast("Animasi sebelumnya disimpan: $it") }
             }
             val name = if (old != null) AnProject.name else CsProject.projectName
-            AnProject.setDoc(doc, name, HashMap(AnProject.tracks), AnProject.durationMs, AnProject.file)
+            AnProject.setDoc(doc, name, HashMap(AnProject.tracks), AnProject.durationMs, AnProject.file, HashMap(AnProject.opts))
             AnStore.autosave(a)
         }
     }
